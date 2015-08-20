@@ -1,0 +1,97 @@
+---
+title: "CFR PCL Ss Standard Model"
+author: "Will Hopper"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    fig_caption: yes
+    toc: true
+    toc_depth: 2
+    css: custom.css
+---
+```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
+               warning=F, message=FALSE, fig.align='center')
+library(dplyr)
+library(FAM)
+library(PCL)
+library(reshape2)
+library(whoppeR)
+library(grid)
+library(gridExtra)
+library(ggplot2)
+library(xtable)
+model_prefix <- c("CFR_PCL", "std")
+source("fitCFR_PCL.R")
+```
+
+```{r labellers}
+  classNames <- list(
+    'np'="No Practice",
+    'sp'="Study Practice",
+    'tp'="Test Practice"
+  )  
+  
+  classLabeller <- function(variable,value) {        
+    if (variable=='class') {
+      return(classNames[value])
+    } else {
+      return(value)
+    }
+  }
+  
+```
+
+```{r fetchData}
+CFR_tested <- filter(CFR_allSs,
+                     list != 0,
+                     phase=='final' | (phase=='prac' & practice =='T')) %>%
+  mutate(RTrounded = round(RT,1))
+```
+
+```{r load_or_fit}
+resultsFile <- paste(paste0(model_prefix, collapse = "_"),
+                  'results',sep='_')
+if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep=''))))  {
+  model <- list(par = c(ER=.53,LR=.1,TR =.05, FR=.05),
+                fn = CFR_PCL, method="Nelder-Mead", itnmax = 1000,
+                fixed=  c(theta=.5,nFeat=100,nSim=1000,nList=15,
+                          lambda=.2,Tmin=2,Tmax=10,Time=90),
+                data = CFR_tested,
+                fitting = TRUE,
+                objective_fcn = model_prefix[1],
+                name = model_prefix[2])
+  results <- fitCFR_PCL(model,inpar=TRUE)
+  saveRDS(results,
+          file = file.path("data",paste(resultsFile,'.rds',sep='')))  
+} else {
+  results <- readRDS(file.path("data",paste(resultsFile,'.rds',sep='')))
+}
+  
+preds <- do.call(rbind,lapply(lapply(results$results,`[[`, 'preds'),
+                              `[[`, 'preds'))
+dist <- do.call(rbind,lapply(lapply(results$results,`[[`, 'preds'),
+                             `[[`, 'dist'))
+fits <- do.call(rbind,lapply(results$results,`[[`, 'fit'))
+```
+
+# Model Specs
+```{r modelInfo,results='asis'}
+print(xtable(t(as.matrix(results$par)), digits=3,
+             caption = paste("Starting Free Parameters")),
+      type = "html", include.rownames=FALSE, caption.placement="top")
+print(xtable(t(as.matrix(results$fixed)), digits=3,
+             caption = paste("Fixed Parameters")),
+      type = "html", include.rownames=FALSE, caption.placement="top")
+```
+
+# Model Results by Subject
+```{r subject,results='asis'}
+  cols <- c("sub_num","class","order")
+  CFR_tested[,cols] <- lapply(CFR_tested[,cols],factor)
+  preds[,cols] <- lapply(preds[,cols],factor)
+```
+
+# Averaged Results
+```{r averages,results='asis'}
+```
