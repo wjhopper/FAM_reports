@@ -8,11 +8,6 @@ output:
     toc: true
     toc_depth: 2
     css: custom.css
-vignette: >
-  %\VignetteIndexEntry{Vignette Title}
-  %\VignetteEngine{knitr::rmarkdown}
-  %\VignetteEncoding{UTF-8}
-
 ---
 ```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
@@ -40,7 +35,7 @@ condData <- LB4L_conditional(LB4L_allSs)
 ```{r load_or_fit}
 resultsFile <- paste(paste0(model_prefix, collapse = "_"),
                   'results',sep='_')
-if (!exists(resultsFile)) {
+if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep='')))) {
   model <- list(par = c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
                 fn = LB4L_PCLss, method="Nelder-Mead", itnmax = 1000,
                 fixed= c(theta=.5,nFeat=100,nSim=1000,nList=15),
@@ -50,8 +45,10 @@ if (!exists(resultsFile)) {
                 objective_fcn = model_prefix[1],
                 name = model_prefix[2])
   results <- fitLB4L(model,inpar=TRUE)
+  saveRDS(results,
+          file = file.path("data",paste(resultsFile,'.rds',sep='')))  
 } else {
-  results <- get(resultsFile)
+  results <- readRDS(file.path("data",paste(resultsFile,'.rds',sep='')))
 }
 preds <- do.call(rbind, lapply(lapply(results$results,`[[`, 'preds'),data.frame))
 preds$subject<- unique(IVdata$subject$subject)
@@ -228,7 +225,7 @@ for (i in unique(IVdata_all$subject)) {
         ggtitle("All Condtions")
   
   cat('<h4 class="subid"> Subject',i,'Results </h4>')
-  grid.arrange(IVplot, condPlot ,ncol=1,nrow=2)
+  grid.arrange(IVplot, condPlot ,ncol=2,nrow=1)
   print(xtable(data.frame(Subject = i,
                           Group =IVdata_all$group[IVdata$subject==i][1],
                           select(fits[k,],-subject)),
@@ -240,7 +237,7 @@ for (i in unique(IVdata_all$subject)) {
 ```
 
 ## Average Fits 
-```{r groupPlots,results='asis'}
+```{r groupPlots,results='asis',fig.height=11}
 IVplot_grouped <- IVplot %+%  filter(IVdata_grouped,is.finite(pc)) + 
     geom_line(aes(group = interaction(group_del_to_imm,chain,type)),size=.75)
     
@@ -276,11 +273,14 @@ avg_res <- IVdata_all %>% group_by(subject) %>%
   cbind(fits) %>%
   group_by(group) %>% 
   summarise_each(funs(mean))
-grid.arrange(IVplot_grouped,condPlot_grouped,ncol=2,nrow=1)
+grid.arrange(IVplot_grouped,condPlot_grouped,ncol=1,nrow=2)
 print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
              digits=3,
              caption = paste("Average Parameters")),
-        type = "html", include.rownames=FALSE, caption.placement="top")  
+        type = "html", include.rownames=FALSE, caption.placement="top")
+```
+
+```{r jointPlot_grouped,fig.height=7}
 print(jointPlot_grouped)
 ```
 
