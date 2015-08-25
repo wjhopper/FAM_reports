@@ -44,9 +44,11 @@ source("fitCFR_PCL.R")
 
 ```{r fetchData}
 CFR_tested <- filter(CFR_allSs,
-                     list != 0,
+                     list != 0, score== 1,
                      phase=='final' | (phase=='prac' & practice =='T')) %>%
-  mutate(RTrounded = round(RT,1))
+    mutate(RTrounded = round(RT,1)) %>%
+    group_by(subject,phase,list) %>%
+    mutate(testOrder = 1:n())
 ```
 
 ```{r load_or_fit}
@@ -86,12 +88,107 @@ print(xtable(t(as.matrix(results$fixed)), digits=3,
 ```
 
 # Model Results by Subject
-```{r subject,results='asis'}
-  cols <- c("sub_num","class","order")
+```{r SSdata}
+  cols <- c("subject","class","order")
   CFR_tested[,cols] <- lapply(CFR_tested[,cols],factor)
   preds[,cols] <- lapply(preds[,cols],factor)
+  
+  median_data <- CFR_tested %>% group_by(subject,class,order) %>% 
+    summarise(acc = sum(score)/4,
+              medianRT = median(RT))
+  median_preds <- preds %>% group_by(subject,class,order) %>% 
+    summarise(pred_acc = mean(pred_acc),
+              pred_medianRT = median(pred_RT,na.rm=TRUE))
+  sub_data <- left_join(median_preds,median_data)
+  sub_data$acc[is.na(sub_data$acc)] <- 0   
 ```
 
+```{r SSplots,results='asis'}
+k <- 1
+for (i in unique(sub_data$subject)) {
+  rtPlot <- ggplot(data =sub_data[sub_data$subject==i,],aes(x=order)) +
+    geom_point(aes(y=medianRT,shape="data")) +
+    geom_line(aes(y=medianRT,group=class)) +
+    geom_point(aes(y=pred_medianRT,shape="model")) +
+    geom_line(aes(y=pred_medianRT,group=class)) + 
+    facet_grid(. ~ class,labeller = classLabeller) +
+    scale_x_discrete("Output Item") + 
+    scale_y_continuous("Median First Press RT") +
+    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Obs. Data","PCL Model")) + 
+    theme_larger() + 
+    ggtitle("Data vs. PCL: Median RT")
+  
+  accPlot <- ggplot(data =sub_data[sub_data$subject==i,],aes(x=order)) +
+    geom_point(aes(y=acc,shape="data")) +
+    geom_line(aes(y=acc,group=class)) +
+    geom_point(aes(y=pred_acc,shape="model")) +
+    geom_line(aes(y=pred_acc,group=class)) + 
+    facet_grid(. ~ class,labeller = classLabeller) +
+    scale_x_discrete("Output Item") + 
+    scale_y_continuous("Accuracy") +
+    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Data","PCL")) + 
+    theme_larger() + 
+    ggtitle("Data vs. PCL: Accuracy")
+  
+  densityPlot <- ggplot(data =dist[dist$subject==i,],aes(x=RTrounded,y=RTdist)) + 
+    geom_line(size=.75) +
+    facet_grid(class~order) +
+    geom_point(data = CFR_tested[CFR_tested$subject==i,],
+               mapping=aes(x=RTrounded),y=0,color="blue") + 
+    scale_x_continuous(limits=c(0,max(CFR_tested$RTrounded[CFR_tested$subject==i]+5))) + 
+    theme_larger() + 
+    theme(axis.text.x = element_text(size=rel(1))) + 
+    ggtitle("Model Density")  
+}
+```
 # Averaged Results
 ```{r averages,results='asis'}
+aggData <- CFR_tested %>% group_by(class,order) %>% 
+    summarise(acc = sum(score)/(length(unique(sub_num))*4),
+              err = sqrt(sum((score-acc)^2)/length(unique(sub_num))*4)/sqrt(length(unique(sub_num))*4),
+              medianRT = median(RT),
+              mad = median(abs(RT-medianRT),na.rm=TRUE)) %>%
+    mutate(acc = replace(acc,is.na(acc),0),
+           type = factor("data"))
+  aggPreds <- preds %>% group_by(class,order) %>% 
+    summarise(acc = mean(pred_acc),
+              err = sd(pred_acc)/sqrt(n()),
+              medianRT = median(pred_RT,na.rm=TRUE),
+              mad = median(abs(pred_RT-medianRT),na.rm=TRUE)) %>%
+    mutate(type = factor("model"))
+  aggData <- rbind(aggData,aggPreds)
+  
+  aggDist <- dist %>% group_by(class,order,RTrounded) %>%
+    summarise(RTdist = mean(RTdist))
+    aggRTPlot <- ggplot(data =aggData,aes(x=order,y=medianRT,shape=type)) +
+    geom_point() +
+    geom_line(aes(group=interaction(class,type), linetype=type)) +
+    geom_errorbar(aes(ymax=medianRT+mad, ymin=medianRT-mad),width=.15) +
+    facet_grid(. ~ class,labeller = classLabeller) +
+    scale_x_discrete("Output Item") + 
+    scale_y_continuous("Median First Press RT") +
+    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Obs. Data","PCL Model")) + 
+    scale_linetype_discrete(guide=FALSE) + 
+    mytheme + 
+    ggtitle("Data vs. PCL: Agg. Median RT")
+  
+aggAccPlot <- ggplot(data =aggData,aes(x=order,y=acc,shape=type)) +
+    geom_point() +
+    geom_line(aes(group=interaction(class,type), linetype=type)) +
+    facet_grid(. ~ class,labeller = classLabeller) +
+    scale_x_discrete("Output Item") + 
+    scale_y_continuous("Accuracy") +
+    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Obs. Data","PCL Model")) + 
+    scale_linetype_discrete(guide=FALSE) + 
+    mytheme + 
+    ggtitle("Data vs. PCL: Accuracy")
+  
+aggDensityPlot <- ggplot(data =aggDist,aes(x=RTrounded,y=RTdist)) + 
+    geom_line(size=.75) +
+    facet_grid(class~order) +
+    geom_point(data = CFR_tested,
+               mapping=aes(x=RTrounded),y=0,color="blue") + 
+    scale_x_continuous(limits=c(0,max(CFR_tested$RTrounded+2.5))) +
+    mytheme + theme(axis.text.x = element_text(size=rel(1))) + 
+    ggtitle("Average Model Density")  
 ```
