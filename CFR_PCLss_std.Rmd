@@ -8,6 +8,8 @@ output:
     toc: true
     toc_depth: 2
     css: custom.css
+params:
+  inpar: TRUE
 ---
 ```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
@@ -55,15 +57,15 @@ CFR_tested <- filter(CFR_allSs,
 resultsFile <- paste(paste0(model_prefix, collapse = "_"),
                   'results',sep='_')
 if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep=''))))  {
-  model <- list(par = c(ER=.53,LR=.1,TR =.05, FR=.05),
-                fn = CFR_PCL, method="Nelder-Mead", itnmax = 1000,
+  model <- list(free = c(ER=.53,LR=.1,TR =.05, FR=.05,alpha=13),
                 fixed=  c(theta=.5,nFeat=100,nSim=1000,nList=15,
-                          lambda=.2,Tmin=2,Tmax=10,Time=90),
+                          lambda=.2,Tmin=2,Tmax=10,Time=90),                
+                fn = CFR_PCL,
+                method="Nelder-Mead",
                 data = CFR_tested,
-                fitting = TRUE,
                 objective_fcn = model_prefix[1],
                 name = model_prefix[2])
-  results <- fitCFR_PCL(model,inpar=TRUE)
+  results <- fitCFR_PCL(model)
   saveRDS(results,
           file = file.path("data",paste(resultsFile,'.rds',sep='')))  
 } else {
