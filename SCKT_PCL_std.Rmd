@@ -1,0 +1,219 @@
+---
+title: "SCKT PCL Meta Ss Standard Model"
+author: "Will Hopper"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    fig_caption: yes
+    toc: true
+    toc_depth: 2
+    css: custom.css
+params:
+  inpar: TRUE
+---
+
+```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
+               warning=F, message=FALSE, fig.align='center')
+library(dplyr)
+library(FAM)
+library(reshape2)
+library(whoppeR)
+library(grid)
+library(gridExtra)
+library(ggplot2)
+library(xtable)
+library(wesanderson)
+model_prefix <- c("SCKT_PCL", "std")
+source(paste('fit',model_prefix[1],'.R',sep=''))
+```
+
+
+
+```{r fetchData}
+sub_clusters <- findSubjectClusters(SCKT_allSs, cut= 4)
+sub_clusters$cluster[,] <- lapply(sub_clusters$cluster,factor)
+SCKT_allSs <- left_join(SCKT_allSs, sub_clusters$cluster)
+  
+  
+IVdata <- IVsummary(SCKT_allSs,
+                    grouping.vars =c("cluster","half","practice","other_type")) %>% 
+        group_by(half) %>%
+        mutate(name = if(half[1] ==1) {
+                        ifelse(is.na(other_type),
+                               paste(practice, half,sep=''),
+                               paste(practice,other_type,half,sep='')) 
+                      } else {
+                        ifelse(is.na(other_type),
+                               paste(practice, half,sep=''),
+                               paste(other_type,practice,half,sep=''))            
+                      }
+        )
+# length(unique(gsub(pattern = '[1-2]','',IVdata$name))) == 12
+jointData <- SCKT_jointSummary(SCKT_allSs)$cluster %>%
+  group_by(half) %>% 
+  mutate(prac_named =factor(prac_score,labels = c(`0`='np',`1`='p',`NA`=''),exclude = NULL),
+         final_named = factor(final_score,labels = c(`0`='nf',`1`='f')),
+         name = if(half[1] ==1) {
+                        ifelse(is.na(other_type),
+                               paste(practice, half,sep=''),
+                               paste(practice,other_type,half,sep='')) 
+                      } else {
+                        ifelse(is.na(other_type),
+                               paste(practice, half,sep=''),
+                               paste(other_type,practice,half,sep=''))            
+                      },
+         name=gsub('__','_',paste(name,prac_named,final_named,sep='_'),fixed=TRUE))
+
+condData <- SCKT_condSummary(LB4L_allSs)$cluster%>%
+  group_by(half) %>% 
+  mutate(prac_named =factor(prac_score,labels = c(`0`='neg',`1`='plus',`NA`=''),exclude = NULL),
+         name = if(half[1] ==1) {
+                        ifelse(is.na(other_type),
+                               paste(practice, half,sep=''),
+                               paste(practice,other_type,half,sep='')) 
+                      } else {
+                        ifelse(is.na(other_type),
+                               paste(practice, half,sep=''),
+                               paste(other_type,practice,half,sep=''))            
+                      },
+         name=paste(name,prac_named,sep=''))
+```
+
+```{r load_or_fit,include=FALSE}
+resultsFile <- paste(paste0(model_prefix, collapse = "_"),
+                  'results',sep='_')
+if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep='')))) {
+  model <- list(free = c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
+                fixed= c(theta=.5,nFeat=100,nSim=1000,nList=48),
+                fn = SCKT_PCL, 
+                method="Nelder-Mead",
+                IVdata = IVdata %>% rename(subject = cluster),
+                jointData = jointData %>% rename(subject = cluster),
+                objective_fcn = model_prefix[1],
+                name = model_prefix[2])
+  results <- fitSCKT_PCL(model,inpar=params$inpar)
+  saveRDS(results,
+          file = file.path("data",paste(resultsFile,'.rds',sep='')))  
+} else {
+  results <- readRDS(file.path("data",paste(resultsFile,'.rds',sep='')))
+}
+preds <- do.call(rbind, lapply(lapply(results$results,`[[`, 'preds'),data.frame)) %>%
+  mutate(cluster =  unique(IVdata$cluster)) %>% 
+  melt(id.vars = 'cluster',variable.name = 'name',value.name = 'pred')
+fits <-  do.call(rbind, lapply(results$results,`[[`, 'fit'))
+fits$cluster<-  unique(IVdata$cluster)
+```
+
+## Cluster Fits
+```{r cluster_preds, results="asis"}
+IVpreds <- left_join(IVdata,preds)
+condPreds <- left_join(condData,preds)
+jointPreds <- left_join(jointData,preds)
+
+for (i in unique(IVpreds$cluster)) {
+
+  IVplot <- ggplot(filter(IVpreds,cluster == i) %>% 
+                   mutate(other_type = as.character(other_type) %>%
+                            replace(is.na(.), "none")),
+               aes(x=practice,y=final_score,fill=other_type)) +
+    geom_bar(position='dodge',stat="identity",drop=F) +
+    geom_point(aes(y=pred),shape= 19, size = 3, 
+               position = position_dodge(width=0.9)) + 
+    facet_grid(~ half, labeller = label_both) +
+    ylab("Final Test Accuracy") +
+    scale_fill_manual("Other Cue\nPractice Type",
+                      breaks= c("none","C", "S","T"),
+                      labels = c("No Other Cue","No Practice","Study","Test"),
+                      guide = guide_legend(keyheight = unit(1,'cm')),
+                      values=wes_palette("Darjeeling")) + 
+    scale_x_discrete("Cue Practice",
+                     labels = c(C="No Practice",S="Study",`T` = "Test")) + 
+    theme(strip.text.x = element_text(size = 20),
+          legend.key.height=unit(2,"line")) +
+    ggtitle('Final Test Accuracy')
+
+  condPlot <- ggplot(filter(condPreds, cluster ==i) %>%
+                       mutate(prac_score = replace(prac_score,is.na(prac_score),-1)),
+                     aes(x=practice,y=final_acc,fill=factor(prac_score))) +
+    geom_bar(position='dodge',stat="identity",drop=F) +
+    geom_point(aes(y=pred),shape= 19, size = 3, 
+               position = position_dodge(width=0.9)) + 
+    facet_grid(other_type~half,
+               labeller = labeller(half=label_both,
+                                   other_type = c('T'='Tested',
+                                                  "S"="Studied",
+                                                  "C" = "No Practice"))) +
+    scale_fill_manual("Practice Test",
+                      labels=c("Not Tested", "Incorrect" ,"Correct"),
+                      values = wes_palette("FantasticFox")) + 
+    ylab("Final Test Accuracy")
+  
+  jointPlot <- ggplot(filter(jointPreds, cluster ==i,practice %in% 'T'),
+                      aes(x=interaction(prac_named,final_named,sep="_"),
+                           y = cell_percent)) +
+    geom_bar(position='dodge',stat="identity",drop=F) +
+    geom_point(aes(y=pred),shape= 19, size = 3, 
+               position = position_dodge(width=0.9)) +
+    facet_grid(other_type~half,
+               labeller = labeller(half=label_both,
+                                   other_type = c('T'='Tested',
+                                                  "S"="Studied",
+                                                  "C" = "No Practice"))) +
+    scale_x_discrete(labels = c("np_nf"  = "-/-", "p_nf" = "+/-",
+                                "np_f"  = "-/+", "p_f"  = " +/+"),
+                     name = "Practice Accuracy / Final Accuracy") +
+    ylab("Joint Percentage") +
+    theme_larger()
+    
+  cat('<h4 class="subid"> Cluster',i,'Results </h4>')
+  print(IVplot)
+  print(condPlot)
+  print(jointPlot)
+  print(xtable(fits[fits$cluster ==i,], 
+               digits=3, caption = paste("Best Parameters")),
+        type = "html", include.rownames=FALSE, caption.placement="top")  
+}
+```
+
+
+## Average Results
+```{r averaged_preds, results="asis"}
+
+IVpreds_grouped <- IVsummary(data = IVpreds,
+                             grouping.vars = c("half","practice","other_type"),
+                             measure.vars = c("prac_score","final_score","pred"))
+
+condPreds_grouped <- condPreds %>%
+    group_by(half, practice, other_type,prac_score) %>%
+    summarise(final_acc = mean(final_acc),
+              pred = mean(pred),
+              count=sum(count))
+
+             
+jointPreds_grouped <- jointPreds %>%
+    group_by(half, practice, other_type,prac_score,final_score,
+             prac_named,final_named) %>%
+    summarise(cell_percent = mean(cell_percent),
+              cell_count = sum(cell_count),
+              pred = mean(pred))
+
+IVplot_grouped <- IVplot %+% 
+  mutate(IVpreds_grouped, other_type = as.character(other_type) %>%
+                            replace(is.na(.), "none"))
+IVplot_grouped
+
+condPlot_grouped <- condPlot %+% mutate(condPreds_grouped,
+                                        prac_score = replace(prac_score,is.na(prac_score),-1))
+condPlot_grouped
+
+jointPlot_grouped <- jointPlot %+% filter(jointPreds_grouped,practice %in% "T")
+jointPlot_grouped 
+
+avg_res <- summarise_each(fits,funs(mean))
+print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
+             digits=3,
+             caption = paste("Average Parameters")),
+        type = "html", include.rownames=FALSE, caption.placement="top")
+
+```
