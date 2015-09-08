@@ -28,8 +28,6 @@ model_prefix <- c("SCKT_PCL", "std")
 source(paste('fit',model_prefix[1],'.R',sep=''))
 ```
 
-
-
 ```{r fetchData}
 sub_clusters <- findSubjectClusters(SCKT_allSs, cut= 4)
 sub_clusters$cluster[,] <- lapply(sub_clusters$cluster,factor)
@@ -85,7 +83,7 @@ resultsFile <- paste(paste0(model_prefix, collapse = "_"),
                   'results',sep='_')
 if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep='')))) {
   model <- list(free = c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
-                fixed= c(theta=.5,nFeat=100,nSim=1000,nList=48),
+                fixed= c(theta=.5,nFeat=100,nSim=1000,nList=4),
                 fn = SCKT_PCL, 
                 method="Nelder-Mead",
                 IVdata = IVdata %>% rename(subject = cluster),

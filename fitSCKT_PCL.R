@@ -7,11 +7,15 @@ fitSCKT_PCL<- function(model,inpar = FALSE,...,debugLevel = 0) {
   library(FAM)
   
   errorFcn <- function(pars, fcn, obs, N, fix) {
+    if (!paramBounds(c(pars,fix))) {
+      return(10000000)
+    }
+    
     preds <- fcn(free=pars,fixed=fix)
     preds <- unlist(preds[names(obs)])
-    err <- binomialLL(obs=obs[1:16],pred= preds[1:16], N= N[1:16]) +
+    err <- binomialLL(obs=obs[1:16],pred= preds[1:16], N=4 ) + #N= N[1:16]
       multinomialLL(obs = obs[17:48],pred = preds[17:48],
-                    N = N[17:48])
+                    N = 4)
     return(err)
   }
   if (inpar) {
