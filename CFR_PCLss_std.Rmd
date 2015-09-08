@@ -9,7 +9,7 @@ output:
     toc_depth: 2
     css: custom.css
 params:
-  inpar: TRUE
+  inpar: FALSE
 ---
 ```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
@@ -23,6 +23,7 @@ library(grid)
 library(gridExtra)
 library(ggplot2)
 library(xtable)
+library(tidyr)
 model_prefix <- c("CFR_PCL", "std")
 source("fitCFR_PCL.R")
 ```
@@ -48,42 +49,78 @@ source("fitCFR_PCL.R")
 CFR_tested <- filter(CFR_allSs,
                      list != 0, score== 1,
                      phase=='final' | (phase=='prac' & practice =='T')) %>%
-    mutate(RTrounded = round(RT,1)) %>%
+    ungroup() %>%
+    mutate(RTrounded = round(RT,1),
+           class=factor(class)) %>%
     group_by(subject,phase,list) %>%
-    mutate(testOrder = 1:n())
+    mutate(testOrder = 1:n()) %>% 
+    select(-order) %>%
+    rename(order=testOrder) %>%
+    ungroup() %>% 
+    complete(subject,class,order, cond_list, fill=list(score=0))
 ```
 
 ```{r load_or_fit}
 resultsFile <- paste(paste0(model_prefix, collapse = "_"),
                   'results',sep='_')
-if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep=''))))  {
-  model <- list(free = c(ER=.53,LR=.1,TR =.05, FR=.05,alpha=13),
-                fixed=  c(theta=.5,nFeat=100,nSim=1000,nList=15,
-                          lambda=.2,Tmin=2,Tmax=10,Time=90),                
+  free <- list(c(ER=.6,LR=.035,TR =.05,FR=.1,alpha=50,lambda=.4,Tmin=.5,Tmax=40), #1
+               c(ER=.5,LR=.075,TR =.1,FR=.01,alpha=25,lambda=.7,Tmin=.5,Tmax=56), #2
+               c(ER=.5,LR=.06,TR =.025,FR=.025,alpha=40,lambda=.5,Tmin=.5,Tmax=60), #3
+               c(ER=.52,LR=.05,TR =.01,FR=.01,alpha=40,lambda=.25,Tmin=.5,Tmax=30), #4
+               c(ER=.52,LR=.125,TR =.05,FR=.00,alpha=40,lambda=.9,Tmin=.5,Tmax=62), #5
+               c(ER=.5,LR=.075,TR =.1,FR=.02,alpha=30,lambda=.45,Tmin=.5,Tmax=55), #6
+               c(ER=.5,LR=.11,TR =.01,FR=.02,alpha=40,lambda=.5,Tmin=.5,Tmax=35), #7
+               c(ER=.5,LR=.1,TR =.05,FR=.01,alpha=50,lambda=.75,Tmin=.5,Tmax=40), #8
+               c(ER=.46,LR=.05,TR =.025,FR=.01,alpha=35,lambda=.75,Tmin=.5,Tmax=45), #9 
+               c(ER=.54,LR=.08,TR =.05,FR=.00,alpha=40,lambda=.5,Tmin=.5,Tmax=60), #10
+               c(ER=.5,LR=.125,TR =.05,FR=.025,alpha=50,lambda=.5,Tmin=.5,Tmax=40), #11
+               c(ER=.55,LR=.075,TR =.025,FR=.05,alpha=50,lambda=.75,Tmin=.5,Tmax=60), #12
+               c(ER=.55,LR=.1,TR =.05,FR=.00,alpha=50,lambda=.75,Tmin=.5,Tmax=15), #13
+               c(ER=.51,LR=.075,TR =.025,FR=.05,alpha=40,lambda=.75,Tmin=.5,Tmax=55), #14
+               c(ER=.48,LR=.075,TR =.05,FR=.025,alpha=45,lambda=.5,Tmin=.5,Tmax=60), #15
+               c(ER=.52,LR=.1,TR =.1,FR=.00,alpha=40,lambda=.75,Tmin=.5,Tmax=40), #16
+               c(ER=.51,LR=.2,TR =.05,FR=.00,alpha=50,lambda=.75,Tmin=.5,Tmax=15), #17
+               c(ER=.55,LR=.05,TR =.05,FR=.05,alpha=50,lambda=.5,Tmin=.5,Tmax=25), #18
+               c(ER=.48,LR=.15,TR =.05,FR=.01,alpha=40,lambda=.5,Tmin=.5,Tmax=45), #19
+               c(ER=.5,LR=.12,TR =.15,FR=.00,alpha=35,lambda=.5,Tmin=.5,Tmax=70), #20
+               c(ER=.47,LR=.05,TR =.05,FR=.00,alpha=25,lambda=1,Tmin=.5,Tmax=45), #21
+               c(ER=.5,LR=.05,TR =.05,FR=.00,alpha=40,lambda=.75,Tmin=.5,Tmax=40), #22 
+               c(ER=.55,LR=.025,TR =.025,FR=.05,alpha=45,lambda=.75,Tmin=.5,Tmax=25), #23
+               c(ER=.55,LR=.025,TR =.05,FR=0,alpha=40,lambda=.75,Tmin=.5,Tmax=50), #24
+               c(ER=.56,LR=.01,TR =.05,FR=.025,alpha=40,lambda=.5,Tmin=.5,Tmax=25), #25
+               c(ER=.51,LR=.0,TR =.01,FR=.05,alpha=35,lambda=1,Tmin=.5,Tmax=65), #26
+               c(ER=.48,LR=.125,TR =.05,FR=.05,alpha=30,lambda=.25,Tmin=.5,Tmax=70), #27
+               c(ER=.51,LR=.1,TR =.05,FR=0,alpha=45,lambda=.5,Tmin=.5,Tmax=50), #28
+               c(ER=.48,LR=.025,TR =.1,FR=.0,alpha=40,lambda=.75,Tmin=.5,Tmax=25), #29
+               c(ER=.54,LR=.025,TR =.05,FR=.05,alpha=40,lambda=.75,Tmin=.5,Tmax=35), #30
+               c(ER=.47,LR=.1,TR =.15,FR=0,alpha=35,lambda=.75,Tmin=.5,Tmax=30), #31
+               c(ER=.5,LR=.12,TR =.05,FR=0,alpha=50,lambda=.75,Tmin=.5,Tmax=65), #32
+               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=40,lambda=.75,Tmin=.5,Tmax=35), #33
+               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=25,lambda=.75,Tmin=.5,Tmax=46)) #34
+               
+  model <- list(free = free,
+                fixed=  c(theta=.5,nFeat=100,nSim=1000,nList=15,Time=90),                
                 fn = CFR_PCL,
                 method="Nelder-Mead",
                 data = CFR_tested,
                 objective_fcn = model_prefix[1],
                 name = model_prefix[2])
-  results <- fitCFR_PCL(model)
+  
+if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep=''))))  {
+  results <- fitCFR_PCL(model,inpar =params$inpar)
   saveRDS(results,
           file = file.path("data",paste(resultsFile,'.rds',sep='')))  
 } else {
   results <- readRDS(file.path("data",paste(resultsFile,'.rds',sep='')))
 }
   
-preds <- do.call(rbind,lapply(lapply(results$results,`[[`, 'preds'),
-                              `[[`, 'preds'))
-dist <- do.call(rbind,lapply(lapply(results$results,`[[`, 'preds'),
-                             `[[`, 'dist'))
-fits <- do.call(rbind,lapply(results$results,`[[`, 'fit'))
+preds <- do.call(rbind,lapply(results$results,`[[`, 'preds'))
+dist <- do.call(rbind,lapply(results$results,`[[`, 'distribution'))
+fits <- do.call(rbind,lapply(results$results,`[[`, 1))
 ```
 
-# Model Specs
+# Fixed Model Specs
 ```{r modelInfo,results='asis'}
-print(xtable(t(as.matrix(results$par)), digits=3,
-             caption = paste("Starting Free Parameters")),
-      type = "html", include.rownames=FALSE, caption.placement="top")
 print(xtable(t(as.matrix(results$fixed)), digits=3,
              caption = paste("Fixed Parameters")),
       type = "html", include.rownames=FALSE, caption.placement="top")
@@ -91,45 +128,43 @@ print(xtable(t(as.matrix(results$fixed)), digits=3,
 
 # Model Results by Subject
 ```{r SSdata}
-  cols <- c("subject","class","order")
-  CFR_tested[,cols] <- lapply(CFR_tested[,cols],factor)
-  preds[,cols] <- lapply(preds[,cols],factor)
+
+  accData <- CFR_tested %>% 
+    group_by(subject,class,order) %>% 
+    summarise(acc = mean(score)) %>%
+    mutate(type="real") %>%
+    rbind(data.frame(select(preds,-RT),type="model"))
   
-  median_data <- CFR_tested %>% group_by(subject,class,order) %>% 
-    summarise(acc = sum(score)/4,
-              medianRT = median(RT))
-  median_preds <- preds %>% group_by(subject,class,order) %>% 
-    summarise(pred_acc = mean(pred_acc),
-              pred_medianRT = median(pred_RT,na.rm=TRUE))
-  sub_data <- left_join(median_preds,median_data)
-  sub_data$acc[is.na(sub_data$acc)] <- 0   
+  RTdata <- select(CFR_tested, subject,class, order,RT) %>%
+    mutate(class = as.character(class), type="real") %>%
+    rbind(data.frame(select(preds,-acc),type="model"))
+  
 ```
 
 ```{r SSplots,results='asis'}
 k <- 1
-for (i in unique(sub_data$subject)) {
-  rtPlot <- ggplot(data =sub_data[sub_data$subject==i,],aes(x=order)) +
-    geom_point(aes(y=medianRT,shape="data")) +
-    geom_line(aes(y=medianRT,group=class)) +
-    geom_point(aes(y=pred_medianRT,shape="model")) +
-    geom_line(aes(y=pred_medianRT,group=class)) + 
+for (i in unique(preds$subject)) {
+  rtPlot <- ggplot(data =RTdata[RTdata$subject==i,],
+                   aes(x=order,y=RT, shape=type,color=type)) +
+    geom_point() +
+    geom_line(data = RTdata[RTdata$subject==i & RTdata$type=="model",],
+              linetype=2) +
     facet_grid(. ~ class,labeller = classLabeller) +
     scale_x_discrete("Output Item") + 
+    scale_shape_discrete(name="") + 
+    scale_linetype_discrete(guide=FALSE) + 
     scale_y_continuous("Median First Press RT") +
-    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Obs. Data","PCL Model")) + 
-    theme_larger() + 
     ggtitle("Data vs. PCL: Median RT")
   
-  accPlot <- ggplot(data =sub_data[sub_data$subject==i,],aes(x=order)) +
-    geom_point(aes(y=acc,shape="data")) +
-    geom_line(aes(y=acc,group=class)) +
-    geom_point(aes(y=pred_acc,shape="model")) +
-    geom_line(aes(y=pred_acc,group=class)) + 
+  accPlot <- ggplot(data =accData[accData$subject==i,],
+                   aes(y=acc, x=order,shape=type)) +
+    geom_point() +
+    geom_line(aes(linetype=type,group=type)) +
     facet_grid(. ~ class,labeller = classLabeller) +
     scale_x_discrete("Output Item") + 
-    scale_y_continuous("Accuracy") +
-    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Data","PCL")) + 
-    theme_larger() + 
+    scale_shape_discrete(name="") + 
+    scale_y_continuous("Median First Press RT") +
+    scale_linetype_discrete(guide=FALSE) + 
     ggtitle("Data vs. PCL: Accuracy")
   
   densityPlot <- ggplot(data =dist[dist$subject==i,],aes(x=RTrounded,y=RTdist)) + 
@@ -137,60 +172,59 @@ for (i in unique(sub_data$subject)) {
     facet_grid(class~order) +
     geom_point(data = CFR_tested[CFR_tested$subject==i,],
                mapping=aes(x=RTrounded),y=0,color="blue") + 
-    scale_x_continuous(limits=c(0,max(CFR_tested$RTrounded[CFR_tested$subject==i]+5))) + 
-    theme_larger() + 
+    scale_x_continuous(limits=c(0,max(CFR_tested$RTrounded[CFR_tested$subject==i]+5,
+                                      na.rm=TRUE))) + 
     theme(axis.text.x = element_text(size=rel(1))) + 
-    ggtitle("Model Density")  
+    ggtitle("Model Density")
+  
+  print(rtPlot)
+  print(accPlot)
+  print(densityPlot)
+  print(xtable(t(data.frame(free[i])), digits=3, caption = paste("Starting Parameters")),
+          type = "html", include.rownames=FALSE, caption.placement="top")    
+  print(xtable(fits[i,], digits=3, caption = paste("Best Parameters")),
+          type = "html", include.rownames=FALSE, caption.placement="top")  
 }
 ```
+
 # Averaged Results
 ```{r averages,results='asis'}
-aggData <- CFR_tested %>% group_by(class,order) %>% 
-    summarise(acc = sum(score)/(length(unique(sub_num))*4),
-              err = sqrt(sum((score-acc)^2)/length(unique(sub_num))*4)/sqrt(length(unique(sub_num))*4),
-              medianRT = median(RT),
-              mad = median(abs(RT-medianRT),na.rm=TRUE)) %>%
-    mutate(acc = replace(acc,is.na(acc),0),
-           type = factor("data"))
-  aggPreds <- preds %>% group_by(class,order) %>% 
-    summarise(acc = mean(pred_acc),
-              err = sd(pred_acc)/sqrt(n()),
-              medianRT = median(pred_RT,na.rm=TRUE),
-              mad = median(abs(pred_RT-medianRT),na.rm=TRUE)) %>%
-    mutate(type = factor("model"))
-  aggData <- rbind(aggData,aggPreds)
+aggAccData <- accData %>% 
+    group_by(class,order,type) %>% 
+    summarise(acc = mean(acc))
   
-  aggDist <- dist %>% group_by(class,order,RTrounded) %>%
-    summarise(RTdist = mean(RTdist))
-    aggRTPlot <- ggplot(data =aggData,aes(x=order,y=medianRT,shape=type)) +
-    geom_point() +
-    geom_line(aes(group=interaction(class,type), linetype=type)) +
-    geom_errorbar(aes(ymax=medianRT+mad, ymin=medianRT-mad),width=.15) +
-    facet_grid(. ~ class,labeller = classLabeller) +
-    scale_x_discrete("Output Item") + 
-    scale_y_continuous("Median First Press RT") +
-    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Obs. Data","PCL Model")) + 
-    scale_linetype_discrete(guide=FALSE) + 
-    mytheme + 
-    ggtitle("Data vs. PCL: Agg. Median RT")
+aggRTdata <- RTdata %>%
+  group_by(class,order,type) %>%
+  summarise(RT = median(RT,na.rm=TRUE))
+
+aggDist <- dist %>% 
+  group_by(class,order,RTrounded) %>%
+  summarise(RTdist = mean(RTdist))
   
-aggAccPlot <- ggplot(data =aggData,aes(x=order,y=acc,shape=type)) +
-    geom_point() +
-    geom_line(aes(group=interaction(class,type), linetype=type)) +
-    facet_grid(. ~ class,labeller = classLabeller) +
-    scale_x_discrete("Output Item") + 
-    scale_y_continuous("Accuracy") +
-    scale_shape_manual("",values=c("data"=1,"model"=2),labels=c("Obs. Data","PCL Model")) + 
-    scale_linetype_discrete(guide=FALSE) + 
-    mytheme + 
+aggRTPlot <- ggplot(data =aggAccData,
+                    aes(x=order,y=acc,shape=type)) +
+  geom_point() +
+  geom_line(aes(group=interaction(class,type), linetype=type)) +
+  facet_grid(. ~ class,labeller = classLabeller) +
+  scale_shape_discrete(name="") + 
+  scale_x_discrete("Output Item") + 
+  scale_y_continuous("Median First Press RT") +
+  scale_linetype_discrete(guide=FALSE) + 
+  ggtitle("Data vs. PCL: Agg. Median RT")
+
+aggAccPlot <- aggRTPlot %+% aggRTdata + aes(y=RT) +
+    scale_y_continuous("RT") +
     ggtitle("Data vs. PCL: Accuracy")
   
-aggDensityPlot <- ggplot(data =aggDist,aes(x=RTrounded,y=RTdist)) + 
-    geom_line(size=.75) +
-    facet_grid(class~order) +
-    geom_point(data = CFR_tested,
-               mapping=aes(x=RTrounded),y=0,color="blue") + 
-    scale_x_continuous(limits=c(0,max(CFR_tested$RTrounded+2.5))) +
-    mytheme + theme(axis.text.x = element_text(size=rel(1))) + 
+aggDensityPlot <-  densityPlot %+% aggDist +
     ggtitle("Average Model Density")  
+
+print(aggRTPlot)
+print(aggAccPlot)
+print(aggDensityPlot)
+
+avg_res <- summarise_each(fits,funs(mean))
+print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='fit.value')]),
+             digits=3, caption = paste("Average Parameters")),
+        type = "html", include.rownames=FALSE, caption.placement="top")
 ```
