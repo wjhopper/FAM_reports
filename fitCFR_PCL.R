@@ -37,24 +37,12 @@ fitCFR_PCL<- function(model,inpar = FALSE,...,debugLevel = 0) {
   
   routine <- function() {
     data <- model$data[model$data$subject == j,]
-    freePars <- names(model$free[[j]])
-    interim<- optimx(par=model$free[[j]][c("ER","LR","alpha")],
-                     fn = accuracyErrorFcn,
-                     method = model$method,
-                     control = list(maxit=1000,
-                                    parscale = c(1,1,model$free[[j]]['alpha'])),
-                     fcn = model$fn,
-                     fix=c(model$fixed,
-                           model$free[[j]][!freePars %in% c("ER","LR","alpha")]),
-                     obs=data)
-    newStart <- c(unlist(interim[,c("ER","LR","alpha")]), 
-                  model$free[[j]][!freePars %in% c("ER","LR","alpha")])
-    fit <- optimx(par = newStart,
+    fit <- optimx(par = model$free[[j]],
                   fn = RT_ErrorFcn,
                   method = model$method,
                   control = list(maxit=1000,
-                                 parscale = c(1,1,1,1,model$free[[j]]['alpha'],
-                                              1,1,model$free[[j]]['Tmax'])),
+                                 parscale = c(1,1,1,1,1,1,1,
+                                              model$free[[j]]['Tmax'])),
                   fcn = model$fn,
                   fix = model$fixed,
                   obs = data)      
