@@ -1,5 +1,5 @@
 ---
-title: "CFR PCL Ss Standard Model"
+title: "CFR PCL Model"
 author: "Will Hopper"
 date: "`r Sys.Date()`"
 output: 
@@ -10,7 +10,12 @@ output:
     css: custom.css
 params:
   inpar: FALSE
+  model: CFR_PCL
+  pars: !r c("ER","LR","TR","alpha","lambda","Tmin")
+  fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90, Tmax = 90)
+
 ---
+
 ```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
                warning=F, message=FALSE, fig.align='center')
@@ -24,7 +29,6 @@ library(gridExtra)
 library(ggplot2)
 library(xtable)
 library(tidyr)
-model_prefix <- c("CFR_PCL", "std")
 source("fitCFR_PCL.R")
 ```
 
@@ -61,57 +65,61 @@ CFR_tested <- filter(CFR_allSs,
 ```
 
 ```{r load_or_fit}
-resultsFile <- paste(paste0(model_prefix, collapse = "_"),
-                  'results',sep='_')
-  free <- list(c(ER=.6,LR=.035,TR =.05,FR=.1,alpha=50,lambda=.4,Tmin=.5,Tmax=40), #1
-               c(ER=.5,LR=.075,TR =.1,FR=.01,alpha=25,lambda=.7,Tmin=.5,Tmax=56), #2
-               c(ER=.5,LR=.06,TR =.025,FR=.025,alpha=40,lambda=.5,Tmin=.5,Tmax=60), #3
-               c(ER=.52,LR=.05,TR =.01,FR=.01,alpha=40,lambda=.25,Tmin=.5,Tmax=30), #4
-               c(ER=.52,LR=.125,TR =.05,FR=.00,alpha=40,lambda=.9,Tmin=.5,Tmax=62), #5
-               c(ER=.5,LR=.075,TR =.1,FR=.02,alpha=30,lambda=.45,Tmin=.5,Tmax=55), #6
-               c(ER=.5,LR=.11,TR =.01,FR=.02,alpha=40,lambda=.5,Tmin=.5,Tmax=35), #7
-               c(ER=.5,LR=.1,TR =.05,FR=.01,alpha=50,lambda=.75,Tmin=.5,Tmax=40), #8
-               c(ER=.46,LR=.05,TR =.025,FR=.01,alpha=35,lambda=.75,Tmin=.5,Tmax=45), #9 
-               c(ER=.54,LR=.08,TR =.05,FR=.00,alpha=40,lambda=.5,Tmin=.5,Tmax=60), #10
-               c(ER=.5,LR=.125,TR =.05,FR=.025,alpha=50,lambda=.5,Tmin=.5,Tmax=40), #11
-               c(ER=.55,LR=.075,TR =.025,FR=.05,alpha=50,lambda=.75,Tmin=.5,Tmax=60), #12
-               c(ER=.55,LR=.1,TR =.05,FR=.00,alpha=50,lambda=.75,Tmin=.5,Tmax=15), #13
-               c(ER=.51,LR=.075,TR =.025,FR=.05,alpha=40,lambda=.75,Tmin=.5,Tmax=55), #14
-               c(ER=.48,LR=.075,TR =.05,FR=.025,alpha=45,lambda=.5,Tmin=.5,Tmax=60), #15
-               c(ER=.52,LR=.1,TR =.1,FR=.00,alpha=40,lambda=.75,Tmin=.5,Tmax=40), #16
-               c(ER=.51,LR=.2,TR =.05,FR=.00,alpha=50,lambda=.75,Tmin=.5,Tmax=15), #17
-               c(ER=.55,LR=.05,TR =.05,FR=.05,alpha=50,lambda=.5,Tmin=.5,Tmax=25), #18
-               c(ER=.48,LR=.15,TR =.05,FR=.01,alpha=40,lambda=.5,Tmin=.5,Tmax=45), #19
-               c(ER=.5,LR=.12,TR =.15,FR=.00,alpha=35,lambda=.5,Tmin=.5,Tmax=70), #20
-               c(ER=.47,LR=.05,TR =.05,FR=.00,alpha=25,lambda=1,Tmin=.5,Tmax=45), #21
-               c(ER=.5,LR=.05,TR =.05,FR=.00,alpha=40,lambda=.75,Tmin=.5,Tmax=40), #22 
-               c(ER=.55,LR=.025,TR =.025,FR=.05,alpha=45,lambda=.75,Tmin=.5,Tmax=25), #23
-               c(ER=.55,LR=.025,TR =.05,FR=0,alpha=40,lambda=.75,Tmin=.5,Tmax=50), #24
-               c(ER=.56,LR=.01,TR =.05,FR=.025,alpha=40,lambda=.5,Tmin=.5,Tmax=25), #25
-               c(ER=.51,LR=.0,TR =.01,FR=.05,alpha=35,lambda=1,Tmin=.5,Tmax=65), #26
-               c(ER=.48,LR=.125,TR =.05,FR=.05,alpha=30,lambda=.25,Tmin=.5,Tmax=70), #27
-               c(ER=.51,LR=.1,TR =.05,FR=0,alpha=45,lambda=.5,Tmin=.5,Tmax=50), #28
-               c(ER=.48,LR=.025,TR =.1,FR=.0,alpha=40,lambda=.75,Tmin=.5,Tmax=25), #29
-               c(ER=.54,LR=.025,TR =.05,FR=.05,alpha=40,lambda=.75,Tmin=.5,Tmax=35), #30
-               c(ER=.47,LR=.1,TR =.15,FR=0,alpha=35,lambda=.75,Tmin=.5,Tmax=30), #31
-               c(ER=.5,LR=.12,TR =.05,FR=0,alpha=50,lambda=.75,Tmin=.5,Tmax=65), #32
-               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=40,lambda=.75,Tmin=.5,Tmax=35), #33
-               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=25,lambda=.75,Tmin=.5,Tmax=46)) #34
-               
+  free <- list(c(ER=.6,LR=.035,TR =.05,FR=.1,alpha=.02,lambda=.4,Tmin=.5,Tmax=40), #1
+               c(ER=.5,LR=.075,TR =.1,FR=.01,alpha=.04,lambda=.7,Tmin=.5,Tmax=56), #2
+               c(ER=.5,LR=.06,TR =.025,FR=.025,alpha=.025,lambda=.5,Tmin=.5,Tmax=60), #3
+               c(ER=.52,LR=.05,TR =.01,FR=.01,alpha=.025,lambda=.25,Tmin=.5,Tmax=30), #4
+               c(ER=.52,LR=.125,TR =.05,FR=.00,alpha=.025,lambda=.9,Tmin=.5,Tmax=62), #5
+               c(ER=.5,LR=.075,TR =.1,FR=.02,alpha=.03,lambda=.45,Tmin=.5,Tmax=55), #6
+               c(ER=.5,LR=.11,TR =.01,FR=.02,alpha=.025,lambda=.5,Tmin=.5,Tmax=35), #7
+               c(ER=.5,LR=.1,TR =.05,FR=.01,alpha=.02,lambda=.75,Tmin=.5,Tmax=40), #8
+               c(ER=.46,LR=.05,TR =.025,FR=.01,alpha=.0285,lambda=.75,Tmin=.5,Tmax=45), #9 
+               c(ER=.54,LR=.08,TR =.05,FR=.00,alpha=.025,lambda=.5,Tmin=.5,Tmax=60), #10
+               c(ER=.5,LR=.125,TR =.05,FR=.025,alpha=.02,lambda=.5,Tmin=.5,Tmax=40), #11
+               c(ER=.55,LR=.075,TR =.025,FR=.05,alpha=.02,lambda=.75,Tmin=.5,Tmax=60), #12
+               c(ER=.55,LR=.1,TR =.05,FR=.00,alpha=.02,lambda=.75,Tmin=.5,Tmax=15), #13
+               c(ER=.51,LR=.075,TR =.025,FR=.05,alpha=.025,lambda=.75,Tmin=.5,Tmax=55), #14
+               c(ER=.48,LR=.075,TR =.05,FR=.025,alpha=.0225,lambda=.5,Tmin=.5,Tmax=60), #15
+               c(ER=.52,LR=.1,TR =.1,FR=.00,alpha=.025,lambda=.75,Tmin=.5,Tmax=40), #16
+               c(ER=.51,LR=.2,TR =.05,FR=.00,alpha=.02,lambda=.75,Tmin=.5,Tmax=15), #17
+               c(ER=.55,LR=.05,TR =.05,FR=.05,alpha=.02,lambda=.5,Tmin=.5,Tmax=25), #18
+               c(ER=.48,LR=.15,TR =.05,FR=.01,alpha=.025,lambda=.5,Tmin=.5,Tmax=45), #19
+               c(ER=.5,LR=.12,TR =.15,FR=.00,alpha=.0285,lambda=.5,Tmin=.5,Tmax=70), #20
+               c(ER=.47,LR=.05,TR =.05,FR=.00,alpha=.04,lambda=1,Tmin=.5,Tmax=45), #21
+               c(ER=.5,LR=.05,TR =.05,FR=.00,alpha=.025,lambda=.75,Tmin=.5,Tmax=40), #22 
+               c(ER=.55,LR=.025,TR =.025,FR=.05,alpha=.0222,lambda=.75,Tmin=.5,Tmax=25), #23
+               c(ER=.55,LR=.025,TR =.05,FR=0,alpha=.025,lambda=.75,Tmin=.5,Tmax=50), #24
+               c(ER=.56,LR=.01,TR =.05,FR=.025,alpha=.025,lambda=.5,Tmin=.5,Tmax=25), #25
+               c(ER=.51,LR=.0,TR =.01,FR=.05,alpha=.028,lambda=1,Tmin=.5,Tmax=65), #26
+               c(ER=.48,LR=.125,TR =.05,FR=.05,alpha=.033,lambda=.25,Tmin=.5,Tmax=70), #27
+               c(ER=.51,LR=.1,TR =.05,FR=0,alpha=.0222,lambda=.5,Tmin=.5,Tmax=50), #28
+               c(ER=.48,LR=.025,TR =.1,FR=.0,alpha=.02,lambda=.75,Tmin=.5,Tmax=25), #29
+               c(ER=.54,LR=.025,TR =.05,FR=.05,alpha=.025,lambda=.75,Tmin=.5,Tmax=35), #30
+               c(ER=.47,LR=.1,TR =.15,FR=0,alpha=.0285,lambda=.75,Tmin=.5,Tmax=30), #31
+               c(ER=.5,LR=.12,TR =.05,FR=0,alpha=.02,lambda=.75,Tmin=.5,Tmax=65), #32
+               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=.025,lambda=.75,Tmin=.5,Tmax=35), #33
+               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=.04,lambda=.75,Tmin=.5,Tmax=46)) #34
+
+  if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
+    stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
+  }
+
+  fname <- paste(params$model,
+                 paste0(params$pars,collapse="_"),
+                 sep="_")
+  fpath <- file.path("data",paste(fname,'rds',sep='.'))
   model <- list(free = free,
-                fixed=  c(theta=.5,nFeat=100,nSim=1000,nList=15,Time=90),                
+                fixed =  fixed,                
                 fn = CFR_PCL,
                 method="Nelder-Mead",
                 data = CFR_tested,
-                objective_fcn = model_prefix[1],
-                name = model_prefix[2])
-  
-if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep=''))))  {
+                name = fname)
+ 
+if (!file.exists(fpath))  {
   results <- fitCFR_PCL(model,inpar =params$inpar)
-  saveRDS(results,
-          file = file.path("data",paste(resultsFile,'.rds',sep='')))  
+  saveRDS(results, file = fpath)  
 } else {
-  results <- readRDS(file.path("data",paste(resultsFile,'.rds',sep='')))
+  results <- readRDS(fpath)
 }
   
 preds <- do.call(rbind,lapply(results$results,`[[`, 'preds'))
