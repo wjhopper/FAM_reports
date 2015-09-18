@@ -11,8 +11,9 @@ output:
 params:
   inpar: FALSE
   model: CFR_PCL
+  routine: testing
   pars: !r c("ER","LR","TR","alpha","lambda","Tmin")
-  fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90, Tmax = 90)
+  fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90, Tmax = 70)
 
 ---
 
@@ -29,24 +30,82 @@ library(gridExtra)
 library(ggplot2)
 library(xtable)
 library(tidyr)
-source("fitCFR_PCL.R")
+library(optimx)
+# source("fitCFR_PCL.R")
 ```
 
-```{r labellers}
+```{r functions}
+classLabeller <- function(variable,value) {   
   classNames <- list(
     'np'="No Practice",
     'sp'="Study Practice",
     'tp'="Test Practice"
-  )  
-  
-  classLabeller <- function(variable,value) {        
-    if (variable=='class') {
-      return(classNames[value])
-    } else {
-      return(value)
-    }
+  )      
+  if (variable=='class') {
+    return(classNames[value])
+  } else {
+    return(value)
   }
+}
+
+accuracyErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
   
+  if (!paramBounds(c(free,fixed)) | anyNA(c(free,fixed))) {
+    return(1000000)
+  }
+  preds <- fcn(free=free,fixed=fixed, summarised = TRUE)
+  obs <- obs %>% group_by(class,order) %>%
+    summarise(acc = sum(score)/4) %>%
+    ungroup() %>%
+    complete(class,order,fill=list(acc=0))
+  err <- sum((preds$acc-obs$acc)^2)
+  return(err)
+}
+
+RT_ErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
+  
+  if (!paramBounds(c(free,fixed)) | anyNA(c(free,fixed))) {
+    return(1000000)
+  }
+  preds <- fcn(free=free, fixed=fixed, summarised = FALSE)
+  dist <- preds %>% group_by(class,order) %>% RTdist()
+  likelihoods <- inner_join(select(obs, class, order, RT = RTrounded),
+                            dist,
+                            by = c("class", "order", "RT"))
+  err <- -sum(log(likelihoods$y))
+  return(err)
+}
+
+minimization_routine <- function(model, erf = RT_ErrorFcn) {
+
+  fit <- optimx(par = model$free[[j]],
+                fn = erf,
+                method = model$method,
+                itnmax=1,
+                control = model$clist,
+                fcn = model$obj,
+                fixed = model$fixed,
+                obs = model$data[model$data$subject == j,])      
+  best <- as.vector(coef(fit))
+  names(best) <- colnames(coef(fit))
+  out <- list(fit = cbind(subject=j,fit),
+              pvec =c(subject = j, best))
+  return(out)  
+}
+
+testing_routine <- function(model, erf = RT_ErrorFcn) {
+  err <- erf(free = model$free[[j]], fixed = model$fixed, 
+             obs = model$data[model$data$subject == j,])
+  fit <- data.frame(t(c(model$free[[j]], value = err)))
+  out <- list(fit = cbind(subject=j,fit),
+              pvec =c(subject = j, model$free[[j]]))
+}
+
+if (params$routine =="minimize") {
+  routine <- minimization_routine
+} else {
+  routine <- testing_routine
+}
 ```
 
 ```{r fetchData}
@@ -64,88 +123,131 @@ CFR_tested <- filter(CFR_allSs,
     complete(subject,class,order, cond_list, fill=list(score=0))
 ```
 
+```{r set_model}
+free <- list(c(ER=.8,LR=.035,TR =.05,alpha=.05,lambda=.3,Tmin=.75), #1
+             c(ER=.75,LR=.075,TR =.1,alpha=.05,lambda=.5,Tmin=.75), #2
+             c(ER=.75,LR=.06,TR =.025,alpha=.05,lambda=.3,Tmin=.75), #3
+             c(ER=.752,LR=.05,TR =.01,alpha=.05,lambda=.5,Tmin=.75), #4
+             c(ER=.752,LR=.125,TR =.05,alpha=.05,lambda=.4,Tmin=.75), #5
+             c(ER=.75,LR=.075,TR =.1,alpha=.06,lambda=.3,Tmin=.75), #6
+             c(ER=.75,LR=.11,TR =.01,alpha=.05,lambda=.3,Tmin=.75), #7
+             c(ER=.75,LR=.1,TR =.05,alpha=.04,lambda=.5,Tmin=.75), #8
+             c(ER=.7,LR=.05,TR =.025,alpha=.04,lambda=.5,Tmin=.75), #9 
+             c(ER=.75,LR=.08,TR =.05,alpha=.05,lambda=.3,Tmin=.75), #10
+             c(ER=.7,LR=.125,TR =.05,alpha=.04,lambda=.3,Tmin=.75), #11
+             c(ER=.75,LR=.075,TR =.025,alpha=.04,lambda=.5,Tmin=.75), #12
+             c(ER=.75,LR=.1,TR =.05,alpha=.04,lambda=.5,Tmin=.75), #13
+             c(ER=.7,LR=.075,TR =.025,alpha=.05,lambda=.5,Tmin=.75), #14
+             c(ER=.65,LR=.15,TR =.05,alpha=.05,lambda=.3,Tmin=.75), #15
+             c(ER=.7,LR=.1,TR =.1,alpha=.05,lambda=.5,Tmin=.75), #16
+             c(ER=.7,LR=.2,TR =.05,alpha=.04,lambda=.5,Tmin=.75), #17
+             c(ER=.75,LR=.05,TR =.05,alpha=.04,lambda=.3,Tmin=.75), #18
+             c(ER=.65,LR=.15,TR =.05,alpha=.05,lambda=.3,Tmin=.75), #19
+             c(ER=.6,LR=.12,TR =.15,alpha=.05,lambda=.3,Tmin=.75), #20
+             c(ER=.68,LR=.05,TR =.05,alpha=.04,lambda=.6,Tmin=.75), #21
+             c(ER=.7,LR=.05,TR =.05,alpha=.05,lambda=.5,Tmin=.75), #22
+             c(ER=.75,LR=.025,TR =.025,alpha=.044,lambda=.5,Tmin=.75), #23
+             c(ER=.5,LR=.025,TR =.05,alpha=.05,lambda=.5,Tmin=.75), #24
+             c(ER=.76,LR=.01,TR =.05,alpha=.05,lambda=.3,Tmin=.75), #25
+             c(ER=.71,LR=.0,TR =.01,alpha=.055,lambda=.6,Tmin=.75), #26
+             c(ER=.68,LR=.125,TR =.05,alpha=.1,lambda=.15,Tmin=.75), #27
+             c(ER=.71,LR=.1,TR =.05,alpha=.044,lambda=.3,Tmin=.75), #28
+             c(ER=.68,LR=.025,TR =.1,alpha=.04,lambda=.5,Tmin=.75), #29
+             c(ER=.74,LR=.025,TR =.05,alpha=.05,lambda=.5,Tmin=.75), #30
+             c(ER=.67,LR=.1,TR =.15,alpha=.055,lambda=.5,Tmin=.75), #31
+             c(ER=.6,LR=.12,TR =.05,alpha=.04,lambda=.5,Tmin=.75), #32
+             c(ER=.7,LR=.1,TR =.05,alpha=.05,lambda=.5,Tmin=.75), #33
+             c(ER=.7,LR=.1,TR =.05,alpha=.08,lambda=.5,Tmin=.75)) #34
+
+if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
+  stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
+}
+
+fname <- paste(params$model,
+               paste0(params$pars,collapse="_"),
+               sep="_")
+fpath <- file.path("data",paste(fname,'rds',sep='.'))
+model <- list(free = free,
+              fixed =  params$fixed,
+              obj = CFR_PCL,
+              method="Nelder-Mead",
+              clist <- list(maxit=1,kkt=FALSE),
+              data = CFR_tested)
+```
+
 ```{r load_or_fit}
-  free <- list(c(ER=.6,LR=.035,TR =.05,FR=.1,alpha=.02,lambda=.4,Tmin=.5,Tmax=40), #1
-               c(ER=.5,LR=.075,TR =.1,FR=.01,alpha=.04,lambda=.7,Tmin=.5,Tmax=56), #2
-               c(ER=.5,LR=.06,TR =.025,FR=.025,alpha=.025,lambda=.5,Tmin=.5,Tmax=60), #3
-               c(ER=.52,LR=.05,TR =.01,FR=.01,alpha=.025,lambda=.25,Tmin=.5,Tmax=30), #4
-               c(ER=.52,LR=.125,TR =.05,FR=.00,alpha=.025,lambda=.9,Tmin=.5,Tmax=62), #5
-               c(ER=.5,LR=.075,TR =.1,FR=.02,alpha=.03,lambda=.45,Tmin=.5,Tmax=55), #6
-               c(ER=.5,LR=.11,TR =.01,FR=.02,alpha=.025,lambda=.5,Tmin=.5,Tmax=35), #7
-               c(ER=.5,LR=.1,TR =.05,FR=.01,alpha=.02,lambda=.75,Tmin=.5,Tmax=40), #8
-               c(ER=.46,LR=.05,TR =.025,FR=.01,alpha=.0285,lambda=.75,Tmin=.5,Tmax=45), #9 
-               c(ER=.54,LR=.08,TR =.05,FR=.00,alpha=.025,lambda=.5,Tmin=.5,Tmax=60), #10
-               c(ER=.5,LR=.125,TR =.05,FR=.025,alpha=.02,lambda=.5,Tmin=.5,Tmax=40), #11
-               c(ER=.55,LR=.075,TR =.025,FR=.05,alpha=.02,lambda=.75,Tmin=.5,Tmax=60), #12
-               c(ER=.55,LR=.1,TR =.05,FR=.00,alpha=.02,lambda=.75,Tmin=.5,Tmax=15), #13
-               c(ER=.51,LR=.075,TR =.025,FR=.05,alpha=.025,lambda=.75,Tmin=.5,Tmax=55), #14
-               c(ER=.48,LR=.075,TR =.05,FR=.025,alpha=.0225,lambda=.5,Tmin=.5,Tmax=60), #15
-               c(ER=.52,LR=.1,TR =.1,FR=.00,alpha=.025,lambda=.75,Tmin=.5,Tmax=40), #16
-               c(ER=.51,LR=.2,TR =.05,FR=.00,alpha=.02,lambda=.75,Tmin=.5,Tmax=15), #17
-               c(ER=.55,LR=.05,TR =.05,FR=.05,alpha=.02,lambda=.5,Tmin=.5,Tmax=25), #18
-               c(ER=.48,LR=.15,TR =.05,FR=.01,alpha=.025,lambda=.5,Tmin=.5,Tmax=45), #19
-               c(ER=.5,LR=.12,TR =.15,FR=.00,alpha=.0285,lambda=.5,Tmin=.5,Tmax=70), #20
-               c(ER=.47,LR=.05,TR =.05,FR=.00,alpha=.04,lambda=1,Tmin=.5,Tmax=45), #21
-               c(ER=.5,LR=.05,TR =.05,FR=.00,alpha=.025,lambda=.75,Tmin=.5,Tmax=40), #22 
-               c(ER=.55,LR=.025,TR =.025,FR=.05,alpha=.0222,lambda=.75,Tmin=.5,Tmax=25), #23
-               c(ER=.55,LR=.025,TR =.05,FR=0,alpha=.025,lambda=.75,Tmin=.5,Tmax=50), #24
-               c(ER=.56,LR=.01,TR =.05,FR=.025,alpha=.025,lambda=.5,Tmin=.5,Tmax=25), #25
-               c(ER=.51,LR=.0,TR =.01,FR=.05,alpha=.028,lambda=1,Tmin=.5,Tmax=65), #26
-               c(ER=.48,LR=.125,TR =.05,FR=.05,alpha=.033,lambda=.25,Tmin=.5,Tmax=70), #27
-               c(ER=.51,LR=.1,TR =.05,FR=0,alpha=.0222,lambda=.5,Tmin=.5,Tmax=50), #28
-               c(ER=.48,LR=.025,TR =.1,FR=.0,alpha=.02,lambda=.75,Tmin=.5,Tmax=25), #29
-               c(ER=.54,LR=.025,TR =.05,FR=.05,alpha=.025,lambda=.75,Tmin=.5,Tmax=35), #30
-               c(ER=.47,LR=.1,TR =.15,FR=0,alpha=.0285,lambda=.75,Tmin=.5,Tmax=30), #31
-               c(ER=.5,LR=.12,TR =.05,FR=0,alpha=.02,lambda=.75,Tmin=.5,Tmax=65), #32
-               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=.025,lambda=.75,Tmin=.5,Tmax=35), #33
-               c(ER=.5,LR=.1,TR =.05,FR=.05,alpha=.04,lambda=.75,Tmin=.5,Tmax=46)) #34
-
-  if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
-    stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
-  }
-
-  fname <- paste(params$model,
-                 paste0(params$pars,collapse="_"),
-                 sep="_")
-  fpath <- file.path("data",paste(fname,'rds',sep='.'))
-  model <- list(free = free,
-                fixed =  fixed,                
-                fn = CFR_PCL,
-                method="Nelder-Mead",
-                data = CFR_tested,
-                name = fname)
- 
 if (!file.exists(fpath))  {
-  results <- fitCFR_PCL(model,inpar =params$inpar)
+  
+  if (params$inpar) {
+    cluster <- tryDoParallelCluster(detectCores()-1)
+  }
+  
+  if (params$inpar && cluster$success) {
+    logfile <- tempfile("parlog", fileext = ".txt")
+    cat(paste('[',Sys.time(),']',"INIT parlog"),
+        file=logfile, sep='\n')
+    clusterExport(cluster$handle,c("accuracyErrorFcn", "RT_ErrorFcn","routine"))
+    model$results <- foreach(j =unique(model$data$subject), .verbose=T,
+                             .packages=c("optimx","PCL","whoppeR",
+                                         "dplyr","FAM","reshape2","tidyr"))  %dopar% {
+      sink(logfile, append=TRUE)
+      cat(paste("Fitting subject", j,"\n"))
+      results <- try(routine(model))
+      sink()
+      }
+    
+    stopCluster(cluster$handle)
+    cat(paste('[',Sys.time(),']',"Finished Fitting"),
+        file=logfile,sep='\n')
+  } else {
+    
+    results <- vector(mode='list', length = length(unique(model$data$subject)))
+    for (j in unique(model$data$subject)) {
+      message(paste("Fitting subject", j))
+      results[[j]] <-  try(routine(model))
+    }
+  }
+  
   saveRDS(results, file = fpath)  
 } else {
+  
   results <- readRDS(fpath)
 }
-  
-preds <- do.call(rbind,lapply(results$results,`[[`, 'preds'))
-dist <- do.call(rbind,lapply(results$results,`[[`, 'distribution'))
-fits <- do.call(rbind,lapply(results$results,`[[`, 1))
+```
+
+```{r unlist_and_extract}
+preds <- lapply(lapply(results, `[[`, 'pvec'),CFR_PCL,
+                fixed = model$fixed, summarised=FALSE)
+dist <- bind_rows(lapply(lapply(preds, group_by, class,order),  RTdist),.id="subject")
+preds <- bind_rows(preds,.id="subject")
+dist$subject <- as.numeric(dist$subject)
+preds$subject <-  as.numeric(preds$subject)
+fits <- do.call(rbind,lapply(results,`[[`, 'fit'))
 ```
 
 # Fixed Model Specs
 ```{r modelInfo,results='asis'}
-print(xtable(t(as.matrix(results$fixed)), digits=3,
+print(xtable(t(as.matrix(model$fixed)), digits=3,
              caption = paste("Fixed Parameters")),
       type = "html", include.rownames=FALSE, caption.placement="top")
 ```
 
 # Model Results by Subject
 ```{r SSdata}
+preds_summary <- preds %>% 
+  group_by( subject,order,class) %>%
+  summarise_CFR_PCL()
+accData <- CFR_tested %>% 
+  group_by(subject,class,order) %>% 
+  summarise(acc = mean(score)) %>%
+  mutate(type="real",unrec =NA, timeout=NA) %>%
+  rbind(data.frame(select(preds_summary, -RT),
+                   type="model"))
 
-  accData <- CFR_tested %>% 
-    group_by(subject,class,order) %>% 
-    summarise(acc = mean(score)) %>%
-    mutate(type="real") %>%
-    rbind(data.frame(select(preds,-RT),type="model"))
-  
-  RTdata <- select(CFR_tested, subject,class, order,RT) %>%
-    mutate(class = as.character(class), type="real") %>%
-    rbind(data.frame(select(preds,-acc),type="model"))
+RTdata <- select(CFR_tested, subject,class, order,RT) %>%
+  mutate(class = as.character(class), type="real") %>%
+  rbind(data.frame(select(preds_summary,-acc,-unrec,-timeout),
+                   type="model"))
   
 ```
 
@@ -166,20 +268,25 @@ for (i in unique(preds$subject)) {
   
   accPlot <- ggplot(data =accData[accData$subject==i,],
                    aes(y=acc, x=order,shape=type)) +
+    geom_segment(aes(x=order, y=acc, xend = order, yend = acc+unrec,
+                     color='unrec'),size=1) +
+    geom_segment(aes(x=order, acc+unrec, xend = order, yend = acc+unrec+timeout,
+                     color='timeout'),size=1) +    
     geom_point() +
-    geom_line(aes(linetype=type,group=type)) +
+    geom_line(aes(linetype=type,group=type)) +    
     facet_grid(. ~ class,labeller = classLabeller) +
+    scale_color_discrete("Failure Mode", labels=c("Timed Out","Unrecoverable")) +
     scale_x_discrete("Output Item") + 
     scale_shape_discrete(name="") + 
     scale_y_continuous("Median First Press RT") +
     scale_linetype_discrete(guide=FALSE) + 
     ggtitle("Data vs. PCL: Accuracy")
   
-  densityPlot <- ggplot(data =dist[dist$subject==i,],aes(x=RTrounded,y=RTdist)) + 
+  densityPlot <- ggplot(data =dist[dist$subject==i,],aes(x=RT,y=y)) + 
     geom_line(size=.75) +
     facet_grid(class~order) +
     geom_point(data = CFR_tested[CFR_tested$subject==i,],
-               mapping=aes(x=RTrounded),y=0,color="blue") + 
+               mapping=aes(x=RT),y=0,color="blue") + 
     scale_x_continuous(limits=c(0,max(CFR_tested$RTrounded[CFR_tested$subject==i]+5,
                                       na.rm=TRUE))) + 
     theme(axis.text.x = element_text(size=rel(1))) + 
@@ -206,8 +313,8 @@ aggRTdata <- RTdata %>%
   summarise(RT = median(RT,na.rm=TRUE))
 
 aggDist <- dist %>% 
-  group_by(class,order,RTrounded) %>%
-  summarise(RTdist = mean(RTdist))
+  group_by(class,order,RT) %>%
+  summarise(y = mean(y))
   
 aggRTPlot <- ggplot(data =aggAccData,
                     aes(x=order,y=acc,shape=type)) +
@@ -232,7 +339,7 @@ print(aggAccPlot)
 print(aggDensityPlot)
 
 avg_res <- summarise_each(fits,funs(mean))
-print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='fit.value')]),
+print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
              digits=3, caption = paste("Average Parameters")),
         type = "html", include.rownames=FALSE, caption.placement="top")
 ```
