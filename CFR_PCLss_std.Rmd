@@ -14,7 +14,6 @@ params:
   routine: testing
   pars: !r c("ER","LR","TR","alpha","lambda","Tmin")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90, Tmax = 70)
-
 ---
 
 ```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
@@ -83,22 +82,20 @@ minimization_routine <- function(model, erf = RT_ErrorFcn) {
                 method = model$method,
                 itnmax=1,
                 control = model$clist,
-                fcn = model$obj,
-                fixed = model$fixed,
-                obs = model$data[model$data$subject == j,])      
-  best <- as.vector(coef(fit))
-  names(best) <- colnames(coef(fit))
-  out <- list(fit = cbind(subject=j,fit),
-              pvec =c(subject = j, best))
-  return(out)  
+                fcn = model$obj, # passed to erf
+                fixed = model$fixed, # passed to erf
+                obs = model$data[model$data$subject == j,])      # passed to erf
+  return(cbind(fit,subject=j))  
 }
 
 testing_routine <- function(model, erf = RT_ErrorFcn) {
   err <- erf(free = model$free[[j]], fixed = model$fixed, 
              obs = model$data[model$data$subject == j,])
-  fit <- data.frame(t(c(model$free[[j]], value = err)))
-  out <- list(fit = cbind(subject=j,fit),
-              pvec =c(subject = j, model$free[[j]]))
+  fit <- structure(data.frame(t(c(model$free[[j]], value = err,subject=j))),
+                   details = NULL, maximize = NULL,
+                   npar = length(model$free[[j]]), follow.on=NULL,
+                   class = c("optimx", "data.frame"))
+  return(fit)
 }
 
 if (params$routine =="minimize") {
@@ -216,13 +213,19 @@ if (!file.exists(fpath))  {
 ```
 
 ```{r unlist_and_extract}
-preds <- lapply(lapply(results, `[[`, 'pvec'),CFR_PCL,
-                fixed = model$fixed, summarised=FALSE)
+# best <- as.vector(coef(fit))
+# names(best) <- colnames(coef(fit))
+
+best_params <- lapply(results,function(x) {
+  x <- as.vector(coef(x))
+  names(x) <- params$pars
+  return(x) }
+  )
+preds <- lapply(best_params, CFR_PCL, fixed = model$fixed, summarised=FALSE)
 dist <- bind_rows(lapply(lapply(preds, group_by, class,order),  RTdist),.id="subject")
 preds <- bind_rows(preds,.id="subject")
 dist$subject <- as.numeric(dist$subject)
 preds$subject <-  as.numeric(preds$subject)
-fits <- do.call(rbind,lapply(results,`[[`, 'fit'))
 ```
 
 # Fixed Model Specs
@@ -297,7 +300,7 @@ for (i in unique(preds$subject)) {
   print(densityPlot)
   print(xtable(t(data.frame(free[i])), digits=3, caption = paste("Starting Parameters")),
           type = "html", include.rownames=FALSE, caption.placement="top")    
-  print(xtable(fits[i,], digits=3, caption = paste("Best Parameters")),
+  print(xtable(results[[i]], digits=3, caption = paste("Best Parameters")),
           type = "html", include.rownames=FALSE, caption.placement="top")  
 }
 ```
@@ -338,7 +341,7 @@ print(aggRTPlot)
 print(aggAccPlot)
 print(aggDensityPlot)
 
-avg_res <- summarise_each(fits,funs(mean))
+avg_res <- summarise_each(do.call(rbind,results),funs(mean))
 print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
              digits=3, caption = paste("Average Parameters")),
         type = "html", include.rownames=FALSE, caption.placement="top")
