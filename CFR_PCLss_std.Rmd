@@ -10,7 +10,7 @@ output:
     css: custom.css
 params:
   inpar: FALSE
-  model: CFR_PCL
+  model: FAM::CFR_PCL
   routine: testing
   pars: !r c("ER","LR","TR","alpha","lambda","Tmin")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90, Tmax = 70)
@@ -118,6 +118,7 @@ CFR_tested <- filter(CFR_allSs,
     rename(order=testOrder) %>%
     ungroup() %>% 
     complete(subject,class,order, cond_list, fill=list(score=0))
+CFR_tested$class <- as.character(CFR_tested$class)
 ```
 
 ```{r set_model}
@@ -166,7 +167,7 @@ fname <- paste(params$model,
 fpath <- file.path("data",paste(fname,'rds',sep='.'))
 model <- list(free = free,
               fixed =  params$fixed,
-              obj = CFR_PCL,
+              obj = eval(parse(text=params$model)),
               method="Nelder-Mead",
               clist <- list(maxit=1,kkt=FALSE),
               data = CFR_tested)
