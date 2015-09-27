@@ -174,7 +174,7 @@ if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
   stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
 }
 
-fname <- paste(params$model,
+fname <- paste(strsplit(as.character(params$model),"::")[[1]][2],
                paste0(params$pars,collapse="_"),
                sep="_")
 fpath <- file.path("data",paste(fname,'rds',sep='.'))
