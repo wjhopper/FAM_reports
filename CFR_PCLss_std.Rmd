@@ -11,7 +11,7 @@ output:
 params:
   inpar: FALSE
   model: FAM::CFR_PCL
-  routine: testing
+  routine: minimize
   pars: !r c("ER","LR","Ta","TR","lambda","Tmin","Tmax")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90)
 ---
@@ -100,7 +100,7 @@ testing_routine <- function(model, erf = RT_ErrorFcn) {
 
 paramBounds <- function(p) {
 
-  probability_params <- c("ER","LR","FR")
+  probability_params <- c("ER","LR","FR","TR")
   strict_positive_params <- c("Tmin","Tmax","lambda")
   above_one_params <- c("Ta","Tb")
 
