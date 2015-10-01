@@ -6,13 +6,13 @@ output:
   html_document:
     fig_caption: yes
     toc: true
-    toc_depth: 2
+    toc_depth: 4
     css: custom.css
 params:
-  inpar: FALSE
+  inpar: TRUE
   model: FAM::CFR_PCL
   routine: minimize
-  pars: !r c("ER","LR","Ta","TR","lambda","Tmin","Tmax")
+  pars: !r c("ER","LR","Ta","TR","Tmin","Tmax","lambda")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90)
 ---
 
@@ -30,7 +30,6 @@ library(ggplot2)
 library(xtable)
 library(tidyr)
 library(optimx)
-# source("fitCFR_PCL.R")
 ```
 
 ```{r functions}
@@ -67,7 +66,7 @@ RT_ErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
     return(1000000)
   }
   preds <- fcn(free=free, fixed=fixed, summarised = FALSE)
-  dist <- preds %>% group_by(class,order) %>% RTdist()
+  dist <- preds %>% group_by(class,obsOrder) %>% RTdist()
   likelihoods <- inner_join(select(obs, class, order, RT = RTrounded),
                             dist,
                             by = c("class", "order", "RT"))
@@ -79,13 +78,15 @@ minimization_routine <- function(model, erf = RT_ErrorFcn) {
 
   fit <- optimx(par = model$free[[j]],
                 fn = erf,
-                method = model$method,
-                itnmax=1,
-                control = model$clist,
+                method="Nelder-Mead",
+                itnmax=1000,
+                control = list(maxit=1000,kkt=FALSE,
+                               parscale = c(1,1,200,1,1,100,1)),
                 fcn = model$obj, # passed to erf
                 fixed = model$fixed, # passed to erf
                 obs = model$data[model$data$subject == j,])      # passed to erf
-  return(cbind(fit,subject=j))  
+  fit$subject = j
+  return(fit)  
 }
 
 testing_routine <- function(model, erf = RT_ErrorFcn) {
@@ -100,14 +101,14 @@ testing_routine <- function(model, erf = RT_ErrorFcn) {
 
 paramBounds <- function(p) {
 
-  probability_params <- c("ER","LR","FR","TR")
+  probability_params <- c("ER","LR","TR")
   strict_positive_params <- c("Tmin","Tmax","lambda")
   above_one_params <- c("Ta","Tb")
 
-  prob_check <- any(p[names(p) %in% probability_params] < 0, na.rm = TRUE) ||
-                any(p[names(p) %in% probability_params] > 1, na.rm = TRUE)
+  prob_check <- any(p[names(p) %in% probability_params] <= 0, na.rm = TRUE) ||
+                any(p[names(p) %in% probability_params] >= 1, na.rm = TRUE)
   strict_pos_check <- any(p[names(p) %in% strict_positive_params] <= 0, na.rm = TRUE)
-  above_one_check <- any(p[names(p) %in% above_one_params] < 1, na.rm = TRUE)
+  above_one_check <- any(p[names(p) %in% above_one_params] <= 1, na.rm = TRUE)
   
   if (any(prob_check, strict_pos_check, above_one_check)) {
     return(FALSE)
@@ -135,54 +136,53 @@ CFR_tested$class <- as.character(CFR_tested$class)
 ```
 
 ```{r set_model}
-free <- list(c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #1
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #2
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #3
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #4
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #5
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #6
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #7
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #8
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #9 
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #10
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #11
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #12
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #13
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #14
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #15
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #16
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #17
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #18
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #19
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #20
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #21
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #22
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #23
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #24
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #25
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #26
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #27
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #28
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #29
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #30
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #31
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #32
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8), #33
-             c(ER=.53,LR=.3,Ta =49.5,TR=.1,Tmin=.5,Tmax=45,lambda=.8)) #34
+free <- list(c(ER=.62,LR=.025,Ta=150,TR=.02,Tmin=1,Tmax=45,lambda=.5), #1
+             c(ER=.525,LR=.05,Ta=75,TR=.01,Tmin=1,Tmax=45,lambda=.8), #2
+             c(ER=.52,LR=.06,Ta=200,TR=.01,Tmin=1,Tmax=45,lambda=.75), #3
+             c(ER=.525,LR=.05,Ta=125,TR=.01,Tmin=1,Tmax=45,lambda=.75), #4
+             c(ER=.53,LR=.06,Ta=150,TR=.03,Tmin=1,Tmax=45,lambda=.8), #5
+             c(ER=.52,LR=.09,Ta=125,TR=.02,Tmin=1,Tmax=45,lambda=.65), #6
+             c(ER=.524,LR=.09,Ta=150,TR=.025,Tmin=1,Tmax=45,lambda=.9), #7
+             c(ER=.54,LR=.06,Ta=350,TR=.01,Tmin=1,Tmax=45,lambda=.8), #8
+             c(ER=.5,LR=.06,Ta=80,TR=.015,Tmin=1,Tmax=45,lambda=.9), #9 
+             c(ER=.55,LR=.075,Ta=100,TR=.01,Tmin=1,Tmax=45,lambda=.75), #10
+             c(ER=.52,LR=.075,Ta=150,TR=.02,Tmin=1,Tmax=45,lambda=.75), #11
+             c(ER=.55,LR=.07,Ta=150,TR=.04,Tmin=1,Tmax=45,lambda=.85), #12
+             c(ER=.57,LR=.045,Ta=125,TR=.03,Tmin=1,Tmax=45,lambda=.75), #13
+             c(ER=.54,LR=.09,Ta=100,TR=.02,Tmin=1,Tmax=45,lambda=.75), #14
+             c(ER=.52,LR=.09,Ta=200,TR=.01,Tmin=1,Tmax=45,lambda=.85), #15
+             c(ER=.55,LR=.09,Ta=175,TR=.035,Tmin=1,Tmax=45,lambda=.65), #16
+             c(ER=.52,LR=.12,Ta=100,TR=.035,Tmin=1,Tmax=45,lambda=.7), #17
+             c(ER=.56,LR=.09,Ta=200,TR=.03,Tmin=1,Tmax=45,lambda=.75), #18
+             c(ER=.53,LR=.09,Ta=125,TR=.02,Tmin=1,Tmax=45,lambda=.6), #19
+             c(ER=.53,LR=.09,Ta=80,TR=.05,Tmin=1,Tmax=60,lambda=.75), #20
+             c(ER=.515,LR=.09,Ta=100,TR=.025,Tmin=1,Tmax=45,lambda=.85), #21
+             c(ER=.53,LR=.09,Ta=80,TR=.04,Tmin=1,Tmax=45,lambda=.65), #22
+             c(ER=.56,LR=.05,Ta=200,TR=.03,Tmin=1,Tmax=45,lambda=.75), #23
+             c(ER=.55,LR=.06,Ta=120,TR=.06,Tmin=1,Tmax=45,lambda=.75), #24
+             c(ER=.57,LR=.015,Ta=250,TR=.03,Tmin=1,Tmax=45,lambda=.75), #25
+             c(ER=.53,LR=.05,Ta=80,TR=.035,Tmin=1,Tmax=45,lambda=.85), #26
+             c(ER=.53,LR=.02,Ta=50,TR=.06,Tmin=1,Tmax=45,lambda=.75), #27
+             c(ER=.53,LR=.05,Ta=100,TR=.03,Tmin=1,Tmax=45,lambda=.75), #28
+             c(ER=.51,LR=.06,Ta=150,TR=.03,Tmin=1,Tmax=45,lambda=.9), #29
+             c(ER=.56,LR=.05,Ta=120,TR=.02,Tmin=1,Tmax=45,lambda=.7), #30
+             c(ER=.505,LR=.08,Ta=150,TR=.04,Tmin=1,Tmax=45,lambda=.7), #31
+             c(ER=.52,LR=.08,Ta=150,TR=.02,Tmin=1,Tmax=60,lambda=.95), #32
+             c(ER=.57,LR=.06,Ta=120,TR=.02,Tmin=1,Tmax=45,lambda=.7), #33
+             c(ER=.54,LR=.09,Ta=120,TR=.06,Tmin=1,Tmax=45,lambda=.65)) #34
 
 if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
   stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
 }
 
-fname <- paste(strsplit(as.character(params$model),"::")[[1]][2],
+mname <- strsplit(as.character(params$model),"::")[[1]]
+fname <- paste(mname[length(mname)],
                paste0(params$pars,collapse="_"),
                sep="_")
 fpath <- file.path("data",paste(fname,'rds',sep='.'))
 model <- list(free = free,
               fixed =  params$fixed,
               obj = eval(parse(text=params$model)),
-              method="Nelder-Mead",
-              clist <- list(maxit=1,kkt=FALSE),
               data = CFR_tested)
 
 if (params$routine =="minimize") {
@@ -192,8 +192,8 @@ if (params$routine =="minimize") {
 }
 ```
 
-```{r load_or_fit}
-if (!file.exists(fpath))  {
+```{r load_or_fit,include=FALSE}
+ if (!file.exists(fpath))  {
   
   if (params$inpar) {
     cluster <- tryDoParallelCluster(detectCores()-1)
@@ -201,16 +201,18 @@ if (!file.exists(fpath))  {
   
   if (params$inpar && cluster$success) {
     logfile <- tempfile("parlog", fileext = ".txt")
+    message(paste("Log at", logfile))
     cat(paste('[',Sys.time(),']',"INIT parlog"),
         file=logfile, sep='\n')
     clusterExport(cluster$handle,c("accuracyErrorFcn", "RT_ErrorFcn","routine"))
-    model$results <- foreach(j =unique(model$data$subject), .verbose=T,
+    results <- foreach(j =unique(model$data$subject), .verbose=T,
                              .packages=c("optimx","PCL","whoppeR",
                                          "dplyr","FAM","reshape2","tidyr"))  %dopar% {
       sink(logfile, append=TRUE)
       cat(paste("Fitting subject", j,"\n"))
       results <- try(routine(model))
       sink()
+      results
       }
     
     stopCluster(cluster$handle)
@@ -218,7 +220,7 @@ if (!file.exists(fpath))  {
         file=logfile,sep='\n')
   } else {
     
-    results <- vector(mode='list', length = length(unique(model$data$subject)))
+    results <- vector(mode='list', length =length(unique(model$data$subject)))
     for (j in unique(model$data$subject)) {
       message(paste("Fitting subject", j))
       results[[j]] <-  try(routine(model))
@@ -233,16 +235,13 @@ if (!file.exists(fpath))  {
 ```
 
 ```{r unlist_and_extract}
-# best <- as.vector(coef(fit))
-# names(best) <- colnames(coef(fit))
-
 best_params <- lapply(results,function(x) {
   x <- as.vector(coef(x))
   names(x) <- params$pars
   return(x) }
   )
 preds <- lapply(best_params, CFR_PCL, fixed = model$fixed, summarised=FALSE)
-dist <- bind_rows(lapply(lapply(preds, group_by, class,order),  RTdist),.id="subject")
+dist <- bind_rows(lapply(lapply(preds, group_by, class,obsOrder),  RTdist),.id="subject")
 preds <- bind_rows(preds,.id="subject")
 dist$subject <- as.numeric(dist$subject)
 preds$subject <-  as.numeric(preds$subject)
@@ -258,14 +257,13 @@ print(xtable(t(as.matrix(model$fixed)), digits=3,
 # Model Results by Subject
 ```{r SSdata}
 preds_summary <- preds %>% 
-  group_by( subject,order,class) %>%
+  group_by(subject) %>%
   summarise_CFR_PCL()
 accData <- CFR_tested %>% 
   group_by(subject,class,order) %>% 
   summarise(acc = mean(score)) %>%
   mutate(type="real",unrec =NA, timeout=NA) %>%
-  rbind(data.frame(select(preds_summary, -starts_with("RT")),
-                   type="model"))
+  rbind(data.frame(select(preds_summary, -starts_with("RT")), type="model"))
 
 RTdata <- select(CFR_tested, subject,class, order,RT) %>%
   mutate(type="real") %>%
@@ -274,13 +272,15 @@ RTdata <- select(CFR_tested, subject,class, order,RT) %>%
   
 ```
 
-```{r SSplots,results='asis'}
-k <- 1
+```{r subject_performance,results='asis'}
+
 for (i in unique(preds$subject)) {
   rtPlot <- ggplot(data =RTdata[RTdata$subject==i,],
                    aes(x=order,y=RT, shape=type,color=type)) +
-    geom_point() +
-    geom_line(data = RTdata[RTdata$subject==i & RTdata$type=="model",],
+    geom_point(position =position_jitter(width=.4),
+               data = filter(RTdata, subject == i, type == 'real')) +
+    geom_point(data = filter(RTdata, subject == i, type == 'model')) + 
+    geom_line(data = filter(RTdata, subject == i, type == 'model'),
               linetype=2) +
     facet_grid(. ~ class,labeller = classLabeller) +
     scale_x_discrete("Output Item") + 
@@ -315,13 +315,15 @@ for (i in unique(preds$subject)) {
     theme(axis.text.x = element_text(size=rel(1))) + 
     ggtitle("Model Density")
   
-  print(rtPlot)
-  print(accPlot)
-  print(densityPlot)
+  cat(paste("<h4 class='subid'>","Subject ", i, "</h4>",sep=""))
   print(xtable(t(data.frame(free[i])), digits=3, caption = paste("Starting Parameters")),
           type = "html", include.rownames=FALSE, caption.placement="top")    
   print(xtable(results[[i]], digits=3, caption = paste("Best Parameters")),
-          type = "html", include.rownames=FALSE, caption.placement="top")  
+          type = "html", include.rownames=FALSE, caption.placement="top")    
+  print(accPlot)
+  print(rtPlot)
+  print(densityPlot)
+
 }
 ```
 
@@ -330,8 +332,11 @@ for (i in unique(preds$subject)) {
 aggAccData <- accData %>% 
     group_by(class,order,type) %>% 
     summarise(acc = mean(acc))
-  
-aggRTdata <- RTdata %>%
+
+aggRTdata <- select(CFR_tested, subject,class, order,RT) %>%
+  mutate(type="real") %>%
+  rbind(data.frame(select(preds_summary,-acc,-unrec,-timeout, -RT, RT=RTcor),
+                   type="model")) %>% 
   group_by(class,order,type) %>%
   summarise(RT = median(RT,na.rm=TRUE))
 
@@ -339,7 +344,7 @@ aggDist <- dist %>%
   group_by(class,order,RT) %>%
   summarise(y = mean(y))
   
-aggRTPlot <- ggplot(data =aggAccData,
+aggAccPlot <- ggplot(data =aggAccData,
                     aes(x=order,y=acc,shape=type)) +
   geom_point() +
   geom_line(aes(group=interaction(class,type), linetype=type)) +
@@ -350,16 +355,16 @@ aggRTPlot <- ggplot(data =aggAccData,
   scale_linetype_discrete(guide=FALSE) + 
   ggtitle("Data vs. PCL: Agg. Median RT")
 
-aggAccPlot <- aggRTPlot %+% aggRTdata + aes(y=RT) +
+aggRTPlot <- aggAccPlot %+% aggRTdata + aes(y=RT) +
     scale_y_continuous("RT") +
     ggtitle("Data vs. PCL: Accuracy")
   
 aggDensityPlot <-  densityPlot %+% aggDist +
     ggtitle("Average Model Density")  
 
-print(aggRTPlot)
 print(aggAccPlot)
-print(aggDensityPlot)
+print(aggRTPlot)
+# print(aggDensityPlot)
 
 avg_res <- summarise_each(do.call(rbind,results),funs(mean))
 print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
