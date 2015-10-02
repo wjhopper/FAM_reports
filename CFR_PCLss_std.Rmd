@@ -9,9 +9,9 @@ output:
     toc_depth: 4
     css: custom.css
 params:
-  inpar: TRUE
+  inpar: FALSE
   model: FAM::CFR_PCL
-  routine: minimize
+  routine: testing
   pars: !r c("ER","LR","Ta","TR","Tmin","Tmax","lambda")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90)
 ---
@@ -67,6 +67,16 @@ RT_ErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
   }
   preds <- fcn(free=free, fixed=fixed, summarised = FALSE)
   dist <- preds %>% group_by(class,obsOrder) %>% RTdist()
+
+  if (!identical(unique(dist$order),1:c(free,fixed)['nList'])) {
+    dist <- left_join(expand.grid(class=unique(preds$class),
+                                  order = 1:c(free,fixed)['nList'],
+                                  RT=seq(.1,c(free,fixed)['Time'],.1)),
+                      dist,
+                      by = c("class","order","RT"))
+    dist$y[is.na(dist$y)] <- 0
+  }
+  
   likelihoods <- inner_join(select(obs, class, order, RT = RTrounded),
                             dist,
                             by = c("class", "order", "RT"))
