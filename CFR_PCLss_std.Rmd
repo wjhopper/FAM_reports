@@ -9,9 +9,9 @@ output:
     toc_depth: 4
     css: custom.css
 params:
-  inpar: TRUE
+  inpar: FALSE
   model: FAM::CFR_PCL
-  routine: minimize
+  routine: testing
   pars: !r c("ER","LR","Ta","TR","Tmin","Tmax","lambda")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90)
 ---
@@ -67,9 +67,19 @@ RT_ErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
   }
   preds <- fcn(free=free, fixed=fixed, summarised = FALSE)
   dist <- preds %>% group_by(class,obsOrder) %>% RTdist()
+
+  if (!identical(unique(dist$order),1:p['nItems'])) {
+    dist <- left_join(expand.grid(class=c("np","sp","tp"),
+                                  1:p['nItems'],
+                                  RT=seq(.1,time,.1)),
+                      dist,
+                      by = c("class","order","RT"))
+    dist$y[is.na(dist$y)] <- 0
+  }
+  
   likelihoods <- inner_join(select(obs, class, order, RT = RTrounded),
                             dist,
-                            by = c("class", "order", "RT"))
+                            by = c("class", "order", "RT"))    
   err <- -sum(log(likelihoods$y))
   return(err)
 }
@@ -141,7 +151,7 @@ free <- list(c(ER=.62,LR=.025,Ta=150,TR=.02,Tmin=1,Tmax=45,lambda=.5), #1
              c(ER=.52,LR=.06,Ta=200,TR=.01,Tmin=1,Tmax=45,lambda=.75), #3
              c(ER=.525,LR=.05,Ta=125,TR=.01,Tmin=1,Tmax=45,lambda=.75), #4
              c(ER=.53,LR=.06,Ta=150,TR=.03,Tmin=1,Tmax=45,lambda=.8), #5
-             c(ER=.52,LR=.09,Ta=125,TR=.02,Tmin=1,Tmax=45,lambda=.65), #6
+             c(ER=.321,LR=0.112,Ta=132.351,TR=0.068,Tmin=1.043,Tmax=50.838,lambda=0.699), #6
              c(ER=.524,LR=.09,Ta=150,TR=.025,Tmin=1,Tmax=45,lambda=.9), #7
              c(ER=.54,LR=.06,Ta=350,TR=.01,Tmin=1,Tmax=45,lambda=.8), #8
              c(ER=.5,LR=.06,Ta=80,TR=.015,Tmin=1,Tmax=45,lambda=.9), #9 
