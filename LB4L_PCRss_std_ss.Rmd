@@ -1,5 +1,5 @@
 ---
-title: "LB4L PCL Ss Standard Model"
+title: "LB4L PCR Ss Standard Model"
 author: "Will Hopper"
 date: "`r Sys.Date()`"
 output: 
@@ -20,7 +20,7 @@ library(grid)
 library(gridExtra)
 library(ggplot2)
 library(xtable)
-model_prefix <- c("LB4L_PCLss", "std")
+model_prefix <- c("LB4L_PCRss", "std")
 ```
 
 ```{r fetchData}
@@ -37,7 +37,7 @@ resultsFile <- paste(paste0(model_prefix, collapse = "_"),
                   'results',sep='_')
 if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep='')))) {
   model <- list(par = c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
-                fn = LB4L_PCLss, method="Nelder-Mead", itnmax = 1000,
+                fn = LB4L_PCRss, method="Nelder-Mead", itnmax = 1000,
                 fixed= c(theta=.5,nFeat=100,nSim=1000,nList=15),
                 IVdata = IVdata$subject,
                 jointData = jointData$subject,
@@ -170,7 +170,7 @@ for (i in unique(IVdata_all$subject)) {
                                                     "1 Cue, Restudied",
                                                     "1 Cue, Tested")) + 
         scale_shape_discrete("Type", labels=c("real" = "Obs. Data",
-                                              "model" = "PCL Model")) +
+                                              "model" = "PCR Model")) +
         scale_y_continuous("Final Test Accuracy",limit=0:1) + 
         theme_larger() + 
         theme(legend.key.height=unit(2,"line")) + 
@@ -218,7 +218,7 @@ for (i in unique(IVdata_all$subject)) {
                                     "T.inc.inc"  = "1 Cue: +/-"),
                          name = "Condition") +
         scale_color_discrete("Type", labels=c("real" = "Obs. Data",
-                                              "model" = "PCL Model")) +
+                                              "model" = "PCR Model")) +
         scale_y_continuous("Proportion",limit=0:1) +
         theme_larger() + 
         theme(axis.text.x = element_text(size=rel(1))) +

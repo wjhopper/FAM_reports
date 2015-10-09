@@ -1,5 +1,5 @@
 ---
-title: "SCKT PCL Meta Ss Standard Model"
+title: "SCKT PCR Meta Ss Standard Model"
 author: "Will Hopper"
 date: "`r Sys.Date()`"
 output: 
@@ -24,7 +24,7 @@ library(gridExtra)
 library(ggplot2)
 library(xtable)
 library(wesanderson)
-model_prefix <- c("SCKT_PCL", "std")
+model_prefix <- c("SCKT_PCR", "std")
 source(paste('fit',model_prefix[1],'.R',sep=''))
 ```
 
@@ -84,13 +84,13 @@ resultsFile <- paste(paste0(model_prefix, collapse = "_"),
 if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep='')))) {
   model <- list(free = c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
                 fixed= c(theta=.5,nFeat=100,nSim=1000,nList=4),
-                fn = SCKT_PCL, 
+                fn = SCKT_PCR, 
                 method="Nelder-Mead",
                 IVdata = IVdata %>% rename(subject = cluster),
                 jointData = jointData %>% rename(subject = cluster),
                 objective_fcn = model_prefix[1],
                 name = model_prefix[2])
-  results <- fitSCKT_PCL(model,inpar=params$inpar)
+  results <- fitSCKT_PCR(model,inpar=params$inpar)
   saveRDS(results,
           file = file.path("data",paste(resultsFile,'.rds',sep='')))  
 } else {

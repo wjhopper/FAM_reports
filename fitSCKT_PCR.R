@@ -1,4 +1,4 @@
-fitSCKT_PCL<- function(model,inpar = FALSE,...,debugLevel = 0) {
+fitSCKT_PCR<- function(model,inpar = FALSE,...,debugLevel = 0) {
   library(optimx)
   library(dplyr)
   library(tidyr)
@@ -28,7 +28,7 @@ fitSCKT_PCL<- function(model,inpar = FALSE,...,debugLevel = 0) {
                con=logfile,sep='\n')
     clusterExport(cluster$handle,"logfile",envir = environment())
     model$results <- foreach(j =unique(model$IVdata$subject), .verbose=T,
-                             .packages=c("optimx","PCL","whoppeR")) %dopar% {
+                             .packages=c("optimx","PCR","whoppeR")) %dopar% {
       sink(logfile, append=TRUE)
       cat(paste("Fitting subject", j,"\n"))
       sink()

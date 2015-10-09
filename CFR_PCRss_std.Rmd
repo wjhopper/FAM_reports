@@ -1,5 +1,5 @@
 ---
-title: "CFR PCL Model"
+title: "CFR PCR Model"
 author: "Will Hopper"
 date: "`r Sys.Date()`"
 output: 
@@ -10,7 +10,7 @@ output:
     css: custom.css
 params:
   inpar: FALSE
-  model: FAM::CFR_PCL
+  model: FAM::CFR_PCR
   routine: testing
   pars: !r c("ER","LR","Ta","TR","Tmin","Tmax","lambda")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90)
@@ -21,7 +21,7 @@ knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE,
                warning=F, message=FALSE, fig.align='center')
 library(dplyr)
 library(FAM)
-library(PCL)
+library(PCR)
 library(reshape2)
 library(whoppeR)
 library(grid)
@@ -46,7 +46,7 @@ classLabeller <- function(variable,value) {
   }
 }
 
-accuracyErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
+accuracyErrorFcn <- function(free, fixed, obs, fcn = CFR_PCR) {
   
   if (!paramBounds(c(free,fixed)) | anyNA(c(free,fixed))) {
     return(1000000)
@@ -60,7 +60,7 @@ accuracyErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
   return(err)
 }
 
-RT_ErrorFcn <- function(free, fixed, obs, fcn = CFR_PCL) {
+RT_ErrorFcn <- function(free, fixed, obs, fcn = CFR_PCR) {
   
   if (!paramBounds(c(free,fixed)) | anyNA(c(free,fixed))) {
     return(1000000)
@@ -216,7 +216,7 @@ if (params$routine =="minimize") {
         file=logfile, sep='\n')
     clusterExport(cluster$handle,c("accuracyErrorFcn", "RT_ErrorFcn","routine"))
     results <- foreach(j =unique(model$data$subject), .verbose=T,
-                             .packages=c("optimx","PCL","whoppeR",
+                             .packages=c("optimx","PCR","whoppeR",
                                          "dplyr","FAM","reshape2","tidyr"))  %dopar% {
       sink(logfile, append=TRUE)
       cat(paste("Fitting subject", j,"\n"))
@@ -250,7 +250,7 @@ best_params <- lapply(results,function(x) {
   names(x) <- params$pars
   return(x) }
   )
-preds <- lapply(best_params, CFR_PCL, fixed = model$fixed, summarised=FALSE)
+preds <- lapply(best_params, CFR_PCR, fixed = model$fixed, summarised=FALSE)
 dist <- bind_rows(lapply(lapply(preds, group_by, class,obsOrder),  RTdist),.id="subject")
 preds <- bind_rows(preds,.id="subject")
 dist$subject <- as.numeric(dist$subject)
@@ -268,7 +268,7 @@ print(xtable(t(as.matrix(model$fixed)), digits=3,
 ```{r SSdata}
 preds_summary <- preds %>% 
   group_by(subject) %>%
-  summarise_CFR_PCL()
+  summarise_CFR_PCR()
 accData <- CFR_tested %>% 
   group_by(subject,class,order) %>% 
   summarise(acc = mean(score)) %>%
@@ -297,7 +297,7 @@ for (i in unique(preds$subject)) {
     scale_shape_discrete(name="") + 
     scale_linetype_discrete(guide=FALSE) + 
     scale_y_continuous("Median First Press RT") +
-    ggtitle("Data vs. PCL: Median RT")
+    ggtitle("Data vs. PCR: Median RT")
   
   accPlot <- ggplot(data =accData[accData$subject==i,],
                    aes(y=acc, x=order,shape=type)) +
@@ -313,7 +313,7 @@ for (i in unique(preds$subject)) {
     scale_shape_discrete(name="") + 
     scale_y_continuous("Median First Press RT") +
     scale_linetype_discrete(guide=FALSE) + 
-    ggtitle("Data vs. PCL: Accuracy")
+    ggtitle("Data vs. PCR: Accuracy")
   
   densityPlot <- ggplot(data =dist[dist$subject==i,],aes(x=RT,y=y)) + 
     geom_line(size=.75) +
@@ -363,11 +363,11 @@ aggAccPlot <- ggplot(data =aggAccData,
   scale_x_discrete("Output Item") + 
   scale_y_continuous("Median First Press RT") +
   scale_linetype_discrete(guide=FALSE) + 
-  ggtitle("Data vs. PCL: Agg. Median RT")
+  ggtitle("Data vs. PCR: Agg. Median RT")
 
 aggRTPlot <- aggAccPlot %+% aggRTdata + aes(y=RT) +
     scale_y_continuous("RT") +
-    ggtitle("Data vs. PCL: Accuracy")
+    ggtitle("Data vs. PCR: Accuracy")
   
 aggDensityPlot <-  densityPlot %+% aggDist +
     ggtitle("Average Model Density")  
