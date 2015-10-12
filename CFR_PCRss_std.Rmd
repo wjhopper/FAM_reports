@@ -67,11 +67,15 @@ RT_ErrorFcn <- function(free, fixed, obs, fcn = CFR_PCR) {
   }
   preds <- fcn(free=free, fixed=fixed, summarised = FALSE)
   dist <- preds %>% group_by(class,obsOrder) %>% RTdist()
-
-  if (!identical(unique(dist$order),1:c(free,fixed)['nList'])) {
-    dist <- left_join(expand.grid(class=unique(preds$class),
+  completes <- dist%>%
+    group_by(class) %>%
+    summarise(complete = identical(unique(order), 1:c(free,fixed)['nList']))
+  
+  if (!all(completes$complete) || nrow(completes) != length(unique(obs$class))) {
+    dist <- left_join(expand.grid(class=unique(obs$class),
                                   order = 1:c(free,fixed)['nList'],
-                                  RT=seq(.1,c(free,fixed)['Time'],.1)),
+                                  RT=seq(.1,c(free,fixed)['Time'],.1),
+                                  stringsAsFactors = FALSE),
                       dist,
                       by = c("class","order","RT"))
     dist$y[is.na(dist$y)] <- 0
