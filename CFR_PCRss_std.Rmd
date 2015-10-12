@@ -9,9 +9,9 @@ output:
     toc_depth: 4
     css: custom.css
 params:
-  inpar: FALSE
+  inpar: TRUE
   model: FAM::CFR_PCR
-  routine: testing
+  routine: minimize
   pars: !r c("ER","LR","Ta","TR","Tmin","Tmax","lambda")
   fixed: !r c(FR=0,theta=.5,nFeat=100,nSim=1000,nList=15,Time=90)
 ---
@@ -264,7 +264,7 @@ print(xtable(t(as.matrix(model$fixed)), digits=3,
       type = "html", include.rownames=FALSE, caption.placement="top")
 ```
 
-# Model Results by Subject
+
 ```{r SSdata}
 preds_summary <- preds %>% 
   group_by(subject) %>%
@@ -282,38 +282,37 @@ RTdata <- select(CFR_tested, subject,class, order,RT) %>%
   
 ```
 
+# Model Results by Subject
 ```{r subject_performance,results='asis'}
 
 for (i in unique(preds$subject)) {
   rtPlot <- ggplot(data =RTdata[RTdata$subject==i,],
-                   aes(x=order,y=RT, shape=type,color=type)) +
+                   aes(x=factor(order),y=RT, group=type, color=type)) +
     geom_point(position =position_jitter(width=.4),
                data = filter(RTdata, subject == i, type == 'real')) +
     geom_point(data = filter(RTdata, subject == i, type == 'model')) + 
     geom_line(data = filter(RTdata, subject == i, type == 'model'),
               linetype=2) +
     facet_grid(. ~ class,labeller = classLabeller) +
-    scale_x_discrete("Output Item") + 
-    scale_shape_discrete(name="") + 
-    scale_linetype_discrete(guide=FALSE) + 
-    scale_y_continuous("Median First Press RT") +
-    ggtitle("Data vs. PCR: Median RT")
+    scale_y_continuous("Median RT") +
+    scale_x_discrete("Output Item") +
+    scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
+    ggtitle("Data vs. PCR: Reaction Time")
   
   accPlot <- ggplot(data =accData[accData$subject==i,],
-                   aes(y=acc, x=order,shape=type)) +
-    geom_segment(aes(x=order, y=acc, xend = order, yend = acc+unrec,
+                   aes(y=acc, x=factor(order),group=type,linetype=type)) +
+    geom_segment(aes(x=factor(order), y=acc, xend = order, yend = acc+unrec,
                      color='unrec'),size=1) +
-    geom_segment(aes(x=order, acc+unrec, xend = order, yend = acc+unrec+timeout,
+    geom_segment(aes(x=factor(order), acc+unrec, xend = order, yend = acc+unrec+timeout,
                      color='timeout'),size=1) +    
     geom_point() +
-    geom_line(aes(linetype=type,group=type)) +    
+    geom_line() +    
     facet_grid(. ~ class,labeller = classLabeller) +
     scale_color_discrete("Failure Mode", labels=c("Timed Out","Unrecoverable")) +
-    scale_x_discrete("Output Item") + 
-    scale_shape_discrete(name="") + 
-    scale_y_continuous("Median First Press RT") +
-    scale_linetype_discrete(guide=FALSE) + 
-    ggtitle("Data vs. PCR: Accuracy")
+    scale_y_continuous("Proportion of Occurance") +  
+    scale_x_discrete("Output Position") + 
+    scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
+    ggtitle("Data vs. PCR: Output Accuracy")
   
   densityPlot <- ggplot(data =dist[dist$subject==i,],aes(x=RT,y=y)) + 
     geom_line(size=.75) +
@@ -338,43 +337,62 @@ for (i in unique(preds$subject)) {
 ```
 
 # Averaged Results
+
 ```{r averages,results='asis'}
 aggAccData <- accData %>% 
     group_by(class,order,type) %>% 
-    summarise(acc = mean(acc))
+    summarise(sd = sd(acc),
+              acc = mean(acc),
+              count = n())
 
-aggRTdata <- select(CFR_tested, subject,class, order,RT) %>%
+aggRTdata <- CFR_tested %>%
+  select(subject,class, order,RT) %>%
   mutate(type="real") %>%
   rbind(data.frame(select(preds_summary,-acc,-unrec,-timeout, -RT, RT=RTcor),
                    type="model")) %>% 
   group_by(class,order,type) %>%
-  summarise(RT = median(RT,na.rm=TRUE))
+  summarise(MAD =mad(RT,na.rm=T,constant = 1),
+            RT = median(RT,na.rm=TRUE))
 
 aggDist <- dist %>% 
   group_by(class,order,RT) %>%
   summarise(y = mean(y))
   
 aggAccPlot <- ggplot(data =aggAccData,
-                    aes(x=order,y=acc,shape=type)) +
+                     aes(x=factor(order), y=acc, linetype=type)) +
   geom_point() +
-  geom_line(aes(group=interaction(class,type), linetype=type)) +
+  geom_line(aes(group=interaction(class,type))) +
+  geom_errorbar(aes(ymin = acc - sd/sqrt(count), 
+                    ymax =acc + sd/sqrt(count),
+                    group=interaction(class,type),
+                    linetype=1),
+                    width=.3) +   
   facet_grid(. ~ class,labeller = classLabeller) +
-  scale_shape_discrete(name="") + 
-  scale_x_discrete("Output Item") + 
-  scale_y_continuous("Median First Press RT") +
-  scale_linetype_discrete(guide=FALSE) + 
-  ggtitle("Data vs. PCR: Agg. Median RT")
+  scale_y_continuous("Proportion of Occurance") +  
+  scale_x_discrete("Output Position") + 
+  scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
+  ggtitle("Data vs. PCR: Output Accuracy")
 
-aggRTPlot <- aggAccPlot %+% aggRTdata + aes(y=RT) +
-    scale_y_continuous("RT") +
-    ggtitle("Data vs. PCR: Accuracy")
+aggRTPlot <- ggplot(data = aggRTdata,
+                    aes(x=factor(order), y=RT, linetype=type)) +
+  geom_point() +
+  geom_line(aes(group=interaction(class,type))) +
+  geom_errorbar(aes(ymin = RT-(1*MAD), ymax = RT+(1*MAD),
+                  group=interaction(class,type)),
+                  linetype=1,
+                  width=.3) +  
+  facet_grid(. ~ class,labeller = classLabeller) +
+  scale_y_continuous("Median RT") +
+  scale_x_discrete("Output Item") +
+  scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
+  ggtitle("Data vs. PCR: Reaction Time")
   
 aggDensityPlot <-  densityPlot %+% aggDist +
     ggtitle("Average Model Density")  
 
 print(aggAccPlot)
 print(aggRTPlot)
-# print(aggDensityPlot)
+print(aggDensityPlot)
 
 avg_res <- summarise_each(do.call(rbind,results),funs(mean))
 print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
