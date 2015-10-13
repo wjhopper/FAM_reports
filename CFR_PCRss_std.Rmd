@@ -115,7 +115,7 @@ testing_routine <- function(model, erf = RT_ErrorFcn) {
 
 paramBounds <- function(p) {
 
-  probability_params <- c("ER","LR","TR")
+  probability_params <- c("ER","LR","TR","FR")
   strict_positive_params <- c("Tmin","Tmax","lambda")
   above_one_params <- c("Ta","Tb")
 
@@ -138,15 +138,14 @@ CFR_tested <- filter(CFR_allSs,
                      list != 0, score== 1,
                      phase=='final' | (phase=='prac' & practice =='T')) %>%
     ungroup() %>%
-    mutate(RTrounded = round(RT,1),
-           class=factor(class)) %>%
+    mutate(RTrounded = round(RT,1)) %>%
     group_by(subject,phase,list) %>%
     mutate(testOrder = 1:n()) %>% 
     select(-order) %>%
     rename(order=testOrder) %>%
     ungroup() %>% 
     complete(subject,class,order, cond_list, fill=list(score=0))
-CFR_tested$class <- as.character(CFR_tested$class)
+
 ```
 
 ```{r set_model}
@@ -261,7 +260,7 @@ dist$subject <- as.numeric(dist$subject)
 preds$subject <-  as.numeric(preds$subject)
 ```
 
-# Fixed Model Specs
+# Fixed Specs
 ```{r modelInfo,results='asis'}
 print(xtable(t(as.matrix(model$fixed)), digits=3,
              caption = paste("Fixed Parameters")),
@@ -364,13 +363,13 @@ aggDist <- dist %>%
   
 aggAccPlot <- ggplot(data =aggAccData,
                      aes(x=factor(order), y=acc, linetype=type)) +
-  geom_point() +
-  geom_line(aes(group=interaction(class,type))) +
+  geom_point(size=2) +
+  geom_line(aes(group=interaction(class,type)),size=.75) +
   geom_errorbar(aes(ymin = acc - sd/sqrt(count), 
                     ymax =acc + sd/sqrt(count),
-                    group=interaction(class,type),
-                    linetype=1),
-                    width=.3) +   
+                    group=interaction(class,type)),
+                linetype=1,
+                width=.3) +
   facet_grid(. ~ class,labeller = classLabeller) +
   scale_y_continuous("Proportion of Occurance") +  
   scale_x_discrete("Output Position") + 
@@ -379,12 +378,12 @@ aggAccPlot <- ggplot(data =aggAccData,
 
 aggRTPlot <- ggplot(data = aggRTdata,
                     aes(x=factor(order), y=RT, linetype=type)) +
-  geom_point() +
-  geom_line(aes(group=interaction(class,type))) +
+  geom_point(size=2) +
+  geom_line(aes(group=interaction(class,type)),size=.75) +
   geom_errorbar(aes(ymin = RT-(1*MAD), ymax = RT+(1*MAD),
-                  group=interaction(class,type)),
-                  linetype=1,
-                  width=.3) +  
+                    group=interaction(class,type)),
+                linetype=1,
+                width=.3) +
   facet_grid(. ~ class,labeller = classLabeller) +
   scale_y_continuous("Median RT") +
   scale_x_discrete("Output Item") +
