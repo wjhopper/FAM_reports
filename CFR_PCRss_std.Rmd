@@ -45,6 +45,17 @@ classLabeller <- function(variable,value) {
     return(value)
   }
 }
+typeLabeller <- function(variable,value) {   
+  typeNames <- list(
+    'model'="PCR Model"  ,  
+    'real'="Obs. Data"
+  )      
+  if (variable=='type') {
+    return(typeNames[value])
+  } else {
+    return(value)
+  }
+}
 
 accuracyErrorFcn <- function(free, fixed, obs, fcn = CFR_PCR) {
   
@@ -377,7 +388,7 @@ aggAccPlot <- ggplot(data =aggAccData,
   ggtitle("Data vs. PCR: Output Accuracy")
 
 aggRTPlot <- ggplot(data = aggRTdata,
-                    aes(x=factor(order), y=RT, linetype=type)) +
+                    aes(x=factor(order), y=RT, linetype=type, color = class)) +
   geom_point(size=2) +
   geom_line(aes(group=interaction(class,type)),size=.75) +
   geom_errorbar(aes(ymin = RT-(1*MAD), ymax = RT+(1*MAD),
@@ -387,7 +398,11 @@ aggRTPlot <- ggplot(data = aggRTdata,
   facet_grid(. ~ class,labeller = classLabeller) +
   scale_y_continuous("Median RT") +
   scale_x_discrete("Output Item") +
-  scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
+  scale_color_manual(name="Condition", guide=FALSE,
+                     labels=c("Baseline","Restudy","Test Practice"),
+                     values = c('black', 'red', '#00b300')) +   
+  scale_linetype_discrete(name="",breaks = c('model','real'),
+                          labels=c("PCR Model", "Obs. Data")) + 
   ggtitle("Data vs. PCR: Reaction Time")
   
 aggDensityPlot <-  densityPlot %+% aggDist +
@@ -401,4 +416,21 @@ avg_res <- summarise_each(do.call(rbind,results),funs(mean))
 print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
              digits=3, caption = paste("Average Parameters")),
         type = "html", include.rownames=FALSE, caption.placement="top")
+
+aggAccPlot_byType <- ggplot(data =aggAccData,
+                     aes(x=factor(order), y=acc, color=class)) +
+  geom_point(size=2) +
+  geom_line(aes(group=interaction(class,type)),size=.75) +
+  geom_errorbar(aes(ymin = acc - sd/sqrt(count), 
+                    ymax =acc + sd/sqrt(count),
+                    group=interaction(class,type)),
+                linetype=1,
+                width=.3) +
+  facet_grid(. ~ type, labeller = typeLabeller) +
+  scale_y_continuous("Proportion of Occurance") +  
+  scale_x_discrete("Output Position") + 
+  scale_color_manual(name="Condition",
+                     labels=c("Baseline","Restudy","Test Practice"),
+                     values = c('black', 'red', '#00b300')) +  
+  ggtitle("Data vs. PCR: Output Accuracy")
 ```
