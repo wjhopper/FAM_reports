@@ -12,6 +12,7 @@ output:
 ```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
                warning=F, message=FALSE, fig.align='center')
+library(Hmisc) # Load before dplyr to prevent summarise getting masked
 library(dplyr)
 library(FAM)
 library(reshape2)
@@ -23,11 +24,30 @@ library(xtable)
 model_prefix <- c("LB4L_PCRss", "std")
 ```
 
+```{r functions}
+cueLabeller <- function(variable,value) {   
+  cueNames <- list( 'Same Cue', 'Other Cue')
+  groupNames <- list( 'Immediate', 'Delay') 
+  if (variable=='cues') {
+    return(cueNames[value])
+  } else {
+    return(groupNames[value])
+  }
+}
+```
+
 ```{r fetchData}
 bad <- badSubs(LB4L_allSs)$removed
 LB4L_allSs <- filter(LB4L_allSs, !(subject %in% bad))
 LB4L_allSs$subject <- factor(LB4L_allSs$subject)
-IVdata <- LB4L_IV(LB4L_allSs)
+IVdata <- heirarchicalSummary(collapse = c("subject","group"),
+                              hold =c("practice","other_type"),
+                              rawData = cbind(filter(LB4L_allSs,list !=1) ,n=1),
+                              prac_sd = sd(prac_score),
+                              prac_score = mean(prac_score,na.rm=TRUE),
+                              final_sd = sd(final_score),                            
+                              final_score = mean(final_score),
+                              n=sum(n))
 jointData <- LB4L_joint(LB4L_allSs)
 condData <- LB4L_conditional(LB4L_allSs)
 ```
@@ -51,7 +71,7 @@ if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep='')))) {
   results <- readRDS(file.path("data",paste(resultsFile,'.rds',sep='')))
 }
 preds <- do.call(rbind, lapply(lapply(results$results,`[[`, 'preds'),data.frame))
-preds$subject<- unique(IVdata$subject$subject)
+preds$subject<- unique(jointData$subject$subject)
 fits <-  do.call(rbind, lapply(results$results,`[[`, 'fit'))
 fits$subject<- preds$subject
 ```
@@ -70,29 +90,27 @@ print(xtable(t(as.matrix(results$fixed)), digits=3,
 IVdata_all <- IVdata$subject %>% 
    mutate(type = "model") %>%
    group_by(subject) %>%
-   mutate(prac_acc = replace(prac_acc, !is.na(prac_acc), 
+   mutate(prac_score = replace(prac_score, !is.na(prac_score), 
                              preds$prac[subject[1]]),
-          final_acc = replace(final_acc, practice=='C' & other_type!='T',
+          final_score = replace(final_score, practice=='C' & other_type!='T',
                               preds$C[subject[1]]),
-          final_acc = replace(final_acc, practice=='S', preds$S[subject[1]]),
-          final_acc = replace(final_acc, practice=='T' & other_type!='C',
+          final_score = replace(final_score, practice=='S', preds$S[subject[1]]),
+          final_score = replace(final_score, practice=='T' & other_type!='C',
                               preds$`T`[subject[1]]),
-          final_acc = replace(final_acc, practice=='C' & other_type=='T',
+          final_score = replace(final_score, practice=='C' & other_type=='T',
                               preds$CT[subject[1]])) %>% 
    rbind(cbind(IVdata$subject,type="real")) %>% 
    melt(id.vars = c("subject","group", "practice",
-                    "other_type","chain","type"),
-        measure.vars = c("prac_acc","final_acc"),
+                    "other_type","type"),
+        measure.vars = c("prac_score","final_score"),
         value.name = 'pc') %>%
    mutate(timepoint = factor(ifelse(grepl("prac",variable,fixed=TRUE),
                                     1, 
-                                    ifelse(grepl("delay",group,fixed=TRUE), 3,2))),
-           chain = replace(chain,chain==4,1),
-           xaxis = interaction(chain,timepoint))   
+                                    ifelse(grepl("delay",group,fixed=TRUE), 3,2))))
 
 IVdata_grouped <- IVdata_all %>%
-  group_by(group,practice,other_type,chain,
-           type, timepoint, xaxis, variable) %>%
+  group_by(group,practice,other_type,
+           type, timepoint, variable) %>%
   summarise(pc= mean(pc)) %>%
     mutate(group_del_to_imm = replace(group,
                                       which(group=='delay' & timepoint ==3),
@@ -109,11 +127,11 @@ condData_all <- condData$subject %>%
   group_by(subject) %>%
   mutate(final_acc = replace(final_acc, practice=='C' & merged_prac_score==1,
                             preds$CTplus[subject[1]]),
-        final_acc = replace(final_acc, practice=='C' & merged_prac_score==0,
+         final_acc = replace(final_acc, practice=='C' & merged_prac_score==0,
                             preds$CTneg[subject[1]]),
-        final_acc = replace(final_acc, practice=='T' & merged_prac_score==1,
+         final_acc = replace(final_acc, practice=='T' & merged_prac_score==1,
                             preds$Tplus[subject[1]]),
-        final_acc = replace(final_acc, practice=='T' & merged_prac_score==0,
+         final_acc = replace(final_acc, practice=='T' & merged_prac_score==0,
                             preds$Tneg[subject[1]])) %>%
   rbind(cbind(condData$subject,type="real")) %>%
   filter((practice =='T' & !other_type %in% 'C') | 
@@ -157,22 +175,29 @@ jointData_all <- jointData$subject %>%
 
 ## Subject Fits
 ```{r subjectPlots, results='asis'}
-k=1
+
 for (i in unique(IVdata_all$subject)) {
+  
+  cat('<h4 class="subid"> Subject',i,'Results </h4>')
+  print(xtable(data.frame(Subject = i,
+                          Group =IVdata_all$group[IVdata$subject==i][1],
+                          select(fits[as.numeric(i),],-subject)),
+                 digits=3, caption = paste("Best Parameters")),
+          type = "html", include.rownames=FALSE, caption.placement="top")  
   IVplot <- ggplot(data= filter(IVdata_all, subject==i, is.finite(pc)),
-                   aes(x=timepoint, y=pc, color=chain, shape=type,
-                       group=interaction(chain,type))) +
+                   aes(x=timepoint, y=pc, shape=type,
+                       color = strSort(interaction(practice,factor(other_type,exclude=NULL))),
+                       group = strSort(interaction(type, practice,factor(other_type,exclude=NULL))))) +
         geom_point(size=3) +    
         geom_line(size=.75) + 
         scale_x_discrete("Test",expand=c(0,.25),labels=c("Practice","Final")) + 
         scale_color_discrete("Condition",labels = c("2 Cues\n1=Tested & 2=Unpracticed",
                                                     "1 Cue, No Practice",
                                                     "1 Cue, Restudied",
-                                                    "1 Cue, Tested")) + 
+                                                    "1 Cue, Tested")) +
         scale_shape_discrete("Type", labels=c("real" = "Obs. Data",
                                               "model" = "PCR Model")) +
-        scale_y_continuous("Final Test Accuracy",limit=0:1) + 
-        theme_larger() + 
+        scale_y_continuous("Final Test Accuracy",limit=0:1) +
         theme(legend.key.height=unit(2,"line")) + 
         ggtitle('Test Accuracy')
   
@@ -196,76 +221,64 @@ for (i in unique(IVdata_all$subject)) {
         ggtitle('Conditional Final Test Accuracy')
 
   
-  jointPlot <- ggplot(data = rbind(filter(IVdata_all, 
-                                          subject==i,
-                                          timepoint != 1,
-                                          chain %in% 2:3) %>%
-                        select(type,xaxis,acc=pc),
-                      filter(ungroup(jointData_all), subject==i) %>%
-                        select(type,xaxis,acc)) %>%
+  jointPlot <- ggplot(data = filter(ungroup(jointData_all), subject==i) %>%
                         mutate(cues = factor(ifelse(grepl("C.",xaxis),2,1))),
-         aes(x=xaxis, y= acc, color = type)) +
-        geom_point(size= 3) +
-        scale_x_discrete(labels = c("2.2" = "Control","3.2" = "Restudy",
-                                    "2.3" = "Control","3.3" = "Restudy",
-                                    "C.cor.cor" ="2 Cue: +/+",
-                                    "C.cor.inc"  = "2 Cues: +/-",
-                                    "C.inc.cor"  = "2 Cue: -/+",
-                                    "C.inc.inc" = "2 Cue: -/-.",
-                                    "T.cor.cor"  = "1 Cue: +/+",
-                                    "T.cor.inc" = "1 Cue: +/-",
-                                    "T.inc.cor"  = "1 Cue: -/+",
-                                    "T.inc.inc"  = "1 Cue: +/-"),
-                         name = "Condition") +
-        scale_color_discrete("Type", labels=c("real" = "Obs. Data",
-                                              "model" = "PCR Model")) +
-        scale_y_continuous("Proportion",limit=0:1) +
-        theme_larger() + 
-        theme(axis.text.x = element_text(size=rel(1))) +
-        ggtitle("All Condtions")
+                      aes(x=interaction(prac,final), y= acc, color = type)) +
+    geom_point(size= 4, position = position_dodge(width=.15)) +
+    facet_grid(~cues,labeller = cueLabeller) + 
+    scale_x_discrete(labels = c("cor.cor" =" + / +",
+                                "cor.inc"  =  "+ /-",
+                                "inc.cor"  = "- / +",
+                                "inc.inc" = "- / -."),
+                     name = "Practice / Final Accuracy") +
+    scale_color_discrete("Type", labels=c("real" = "Obs. Data",
+                                          "model" = "PCR Model")) +
+    scale_y_continuous("Proportion",limit=0:1) +
+    theme(axis.text.x = element_text(size=rel(1.5))) +
+    ggtitle("Joint Accuracy Probabilities")
   
-  cat('<h4 class="subid"> Subject',i,'Results </h4>')
   grid.arrange(IVplot, condPlot ,ncol=2,nrow=1)
-  print(xtable(data.frame(Subject = i,
-                          Group =IVdata_all$group[IVdata$subject==i][1],
-                          select(fits[k,],-subject)),
-                 digits=3, caption = paste("Best Parameters")),
-          type = "html", include.rownames=FALSE, caption.placement="top")
   print(jointPlot)
-  k=k+1
+
 }
 ```
 
 ## Average Fits 
 ```{r groupPlots,results='asis',fig.height=11}
 IVplot_grouped <- IVplot %+%  filter(IVdata_grouped,is.finite(pc)) + 
-    geom_line(aes(group = interaction(group_del_to_imm,chain,type)),size=.75)
-    
-condPlot_grouped <- ggplot(condData_grouped,
-                    aes(x=other_type, y= final_acc,
-                        fill=merged_prac_score,ymax=1)) +
-        geom_bar(position='dodge',stat="identity") +
-        geom_point(shape= 19, size = 3, position = position_dodge(width=0.9),
-             data = filter(condData_grouped, type=='model'))  +  
-        # label n observations in each cell
-        geom_text(aes(y=-.025,label =count, group=merged_prac_score),
-                  position = position_dodge(width=0.9)) +
-        facet_grid(. ~ group,
-                   labeller=function(...) {
-                     return(c("Immediate","Delayed"))
-                     }) + 
-        scale_fill_brewer("Practice\nAccuracy",
-                          breaks=c(0,1),
-                          labels=c("Incorrect", "Correct"),
-                          palette="Set1") +
-        scale_x_discrete("Final Test Cue",
-                         limits=c(NA,'T'),labels=c("Practiced","Unpracticed")) +
-        scale_y_continuous("Final Test Accuracy",expand=c(0,.025)) +
-        theme_larger() +
-        ggtitle('Conditional Final Test Accuracy') 
+    geom_line(aes(group = strSort(interaction(type, group_del_to_imm,
+                                              practice, factor(other_type,exclude=NULL)))),
+              size=.75)
 
-jointPlot_grouped <- jointPlot %+% jointData_grouped +
-  facet_grid(group ~ .)
+condPlot_grouped <- ggplot(filter(condData_grouped, type=="real"),
+                           aes(x=other_type, y= final_acc,
+                               fill=merged_prac_score,ymax=1)) +
+  geom_bar(position='dodge',stat="identity") +
+  geom_point(shape= 19, size = 3, position = position_dodge(width=0.9),
+             data = filter(condData_grouped, type=='model'))  +  
+  geom_errorbar(aes(ymax =upper, ymin=lower),
+                position=position_dodge(width=.9), width=0.2,
+                data= condData_grouped) +
+        # label n observations in each cell
+  geom_text(aes(y=-.025,label =count, group=merged_prac_score),
+            position = position_dodge(width=0.9)) +
+    facet_grid(. ~ group,
+               labeller=function(...) {
+                 return(c("Immediate","Delayed"))
+               }) + 
+    scale_fill_brewer("Practice\nAccuracy",
+                      breaks=c(0,1),
+                      labels=c("Incorrect", "Correct"),
+                      palette="Set1") +
+    scale_x_discrete("Final Test Cue",
+                     limits=c(NA,'T'),labels=c("Practiced","Unpracticed")) +
+    scale_y_continuous("Final Test Accuracy",expand=c(0,.025)) +
+    ggtitle('Conditional Final Test Accuracy') 
+
+  jointPlot_grouped <- jointPlot %+% 
+    mutate(ungroup(jointData_grouped),
+           cues = factor(ifelse(practice == "C",2,1))) + 
+    facet_grid(group ~ cues,labeller = cueLabeller)
 
 avg_res <- IVdata_all %>% group_by(subject) %>% 
   slice(1) %>% 
@@ -273,14 +286,43 @@ avg_res <- IVdata_all %>% group_by(subject) %>%
   cbind(fits) %>%
   group_by(group) %>% 
   summarise_each(funs(mean))
-grid.arrange(IVplot_grouped,condPlot_grouped,ncol=1,nrow=2)
+
 print(xtable(as.matrix(avg_res[1:which(names(avg_res)=='value')]),
              digits=3,
              caption = paste("Average Parameters")),
         type = "html", include.rownames=FALSE, caption.placement="top")
-```
-
-```{r jointPlot_grouped,fig.height=7}
+print(IVplot_grouped)
+print(condPlot_grouped)
 print(jointPlot_grouped)
+
 ```
 
+```{r simpler_averages,eval=FALSE}
+simplerIVPlot <- ggplot(data = filter(IVdata_grouped, timepoint != 1, is.finite(pc)),
+                        aes(x = group, y = pc, ymax=.85, ymin=.15,
+                            shape=type,
+                            color = strSort(interaction(practice,factor(other_type,exclude=NULL))),
+                            group = strSort(interaction(type, practice,factor(other_type,exclude=NULL))))) +
+    geom_point(size=3.25) + 
+    geom_line(size=.75) +
+#     geom_errorbar(aes(ymax = pc + final_sd/sqrt(groupsize),
+#                       ymin = pc - final_sd/sqrt(groupsize)),
+#                   width = .075) + 
+    scale_color_discrete("Condition",
+                         breaks = c("C.T","C.NA","NA.S","NA.T"),
+                         labels = c(C.T = "Other Cue", C.NA = "Baseline",
+                                    NA.S  = "Restudy", NA.T = "Same Cue")) + 
+    scale_x_discrete("Group",expand=c(0,.25),
+                     labels=c("Immediate","Delay")) + 
+    ylab("Final Test Accuracy") + 
+    theme(legend.key.height=unit(2,"line")) + 
+    ggtitle('Cued Recall Accuracy')   + 
+    theme_larger()
+  
+simplerCondPlot <-condPlot_grouped + 
+  scale_x_discrete("Final Test Cue", limits=c(NA,'T'),
+                   labels=c("Same Cue","Other Cue")) +
+  theme_larger()
+simplerjointPlot <- jointPlot_grouped + theme_larger()
+  
+```  
