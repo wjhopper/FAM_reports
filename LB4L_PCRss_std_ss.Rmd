@@ -99,6 +99,7 @@ testing_routine <- function(model, erf = errFcn) {
 ```{r fetchData}
 bad <- badSubs(LB4L_allSs)$removed
 LB4L_allSs <- filter(LB4L_allSs, !(subject %in% bad))
+uniqueSs <- unique(LB4L_allSs$subject)
 LB4L_allSs$subject <- factor(LB4L_allSs$subject)
 IVdata <- heirarchicalSummary(collapse = c("subject","group"),
                               hold =c("practice","other_type"),
@@ -181,11 +182,38 @@ if (!file.exists(fpath))  {
   results <- readRDS(fpath)
 }
 
+```
 
-preds <- do.call(rbind, lapply(lapply(results$results,`[[`, 'preds'),data.frame))
-preds$subject<- unique(jointData$subject$subject)
-fits <-  do.call(rbind, lapply(results$results,`[[`, 'fit'))
-fits$subject<- preds$subject
+
+```{r unlist_and_extract}
+best_params <- lapply(results,function(x) {
+  x <- as.vector(coef(x))
+  names(x) <- params$pars
+  return(x) }
+  )
+
+preds <- lapply(best_params, LB4L_PCRss, fixed = model$fixed)
+IVpreds <- bind_rows(lapply(preds,`[[`,'IV'),.id="subject") %>%
+  mutate(subject = factor(uniqueSs[as.numeric(subject)]),
+         practice = factor(practice),
+         other_type = factor(other_type,exclude=NULL)) %>%
+  rename(pred_prac_score = prac_acc,
+         pred_final_score = final_acc)
+  
+CDpreds <-  bind_rows(lapply(preds,`[[`,'CD'),.id="subject") %>%
+  mutate(subject = factor(uniqueSs[as.numeric(subject)]),
+         practice = factor(practice),
+         other_type = factor(other_type,exclude=NULL),
+         prac_score = factor(prac_score)) %>%
+  rename(merged_prac_score = prac_score,
+         pred_final_acc = final_acc)
+JDpreds <-  bind_rows(lapply(preds,`[[`,'JD'),.id="subject") %>%
+  mutate(subject = factor(uniqueSs[as.numeric(subject)]),
+         practice = factor(practice),
+         other_type = factor(other_type,exclude=NULL),
+         prac_acc  = factor(prac_acc)) %>%
+  rename(merged_prac_score = prac_acc,
+         pred_acc = acc)
 ```
 
 ## Model Specs
