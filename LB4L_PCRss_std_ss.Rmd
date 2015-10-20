@@ -140,7 +140,6 @@ if (params$routine =="minimize") {
 }
 ```
 
-
 ```{r load_or_fit}
 if (!file.exists(fpath))  {
   
@@ -162,7 +161,7 @@ if (!file.exists(fpath))  {
       results <- try(routine(model))
       sink()
       results
-      }
+    }
     
     stopCluster(cluster$handle)
     cat(paste('[',Sys.time(),']',"Finished Fitting"),
@@ -207,12 +206,13 @@ CDpreds <-  bind_rows(lapply(preds,`[[`,'CD'),.id="subject") %>%
          prac_score = factor(prac_score)) %>%
   rename(merged_prac_score = prac_score,
          pred_final_acc = final_acc)
-JDpreds <-  bind_rows(lapply(preds,`[[`,'JD'),.id="subject") %>%
+JDpreds <-bind_rows(lapply(preds,`[[`,'JD'),.id="subject") %>%
   mutate(subject = factor(uniqueSs[as.numeric(subject)]),
          practice = factor(practice),
          other_type = factor(other_type,exclude=NULL),
          prac_acc  = factor(prac_acc)) %>%
   rename(merged_prac_score = prac_acc,
+         final_score = final_acc,         
          pred_acc = acc)
 ```
 
@@ -227,87 +227,83 @@ print(xtable(t(as.matrix(results$fixed)), digits=3,
 ```
 
 ```{r IVdata}
-IVdata_all <- IVdata$subject %>% 
-   mutate(type = "model") %>%
-   group_by(subject) %>%
-   mutate(prac_score = replace(prac_score, !is.na(prac_score), 
-                             preds$prac[subject[1]]),
-          final_score = replace(final_score, practice=='C' & other_type!='T',
-                              preds$C[subject[1]]),
-          final_score = replace(final_score, practice=='S', preds$S[subject[1]]),
-          final_score = replace(final_score, practice=='T' & other_type!='C',
-                              preds$`T`[subject[1]]),
-          final_score = replace(final_score, practice=='C' & other_type=='T',
-                              preds$CT[subject[1]])) %>% 
-   rbind(cbind(IVdata$subject,type="real")) %>% 
-   melt(id.vars = c("subject","group", "practice",
-                    "other_type","type"),
-        measure.vars = c("prac_score","final_score"),
+IVdata_all <- left_join(IVdata$subject,IVpreds) %>% 
+   melt(id.vars = c("subject","group", "practice", "other_type"),
+        measure.vars = c("prac_score","final_score",
+                         "pred_prac_score","pred_final_score"),
         value.name = 'pc') %>%
    mutate(timepoint = factor(ifelse(grepl("prac",variable,fixed=TRUE),
                                     1, 
-                                    ifelse(grepl("delay",group,fixed=TRUE), 3,2))))
+                                    ifelse(grepl("delay",group,fixed=TRUE), 3,2))),
+          type =  ifelse(grepl("pred",variable,fixed=TRUE), "model","real")) %>%
+  select(subject,group,practice,other_type,timepoint,type,pc) %>%
+  arrange(subject,practice,other_type,timepoint,type)
 
 IVdata_grouped <- IVdata_all %>%
-  group_by(group,practice,other_type,
-           type, timepoint, variable) %>%
-  summarise(pc= mean(pc)) %>%
-    mutate(group_del_to_imm = replace(group,
-                                      which(group=='delay' & timepoint ==3),
-                                      'immediate'),
-           group_imm_to_del = replace(group,
-                                      which(group=='immediate' & timepoint ==2),
-                                      'delay'))  
-  
+  group_by(group,practice,other_type,timepoint,type) %>%
+  summarise(sd = sd(pc),
+            pc= mean(pc),
+            groupsize = n()) %>%
+  mutate(group_del_to_imm = replace(group,
+                                    which(group=='delay' & timepoint ==3),
+                                    'immediate'),
+         group_imm_to_del = replace(group,
+                                    which(group=='immediate' & timepoint ==2),
+                                    'delay'))
 ```
 
 ```{r condData}
-condData_all <- condData$subject %>%
-  mutate(type='model') %>% 
-  group_by(subject) %>%
-  mutate(final_acc = replace(final_acc, practice=='C' & merged_prac_score==1,
-                            preds$CTplus[subject[1]]),
-         final_acc = replace(final_acc, practice=='C' & merged_prac_score==0,
-                            preds$CTneg[subject[1]]),
-         final_acc = replace(final_acc, practice=='T' & merged_prac_score==1,
-                            preds$Tplus[subject[1]]),
-         final_acc = replace(final_acc, practice=='T' & merged_prac_score==0,
-                            preds$Tneg[subject[1]])) %>%
-  rbind(cbind(condData$subject,type="real")) %>%
-  filter((practice =='T' & !other_type %in% 'C') | 
-         (practice =='C' & other_type %in% 'T'))
+condData_all <- filter(condData$subject, 
+                       other_type!='C', !is.na(merged_prac_score)) %>% 
+  mutate(other_type = factor(other_type,exclude=NULL),
+         practice = factor(practice),
+         pred_count = count) %>%
+  left_join(CDpreds)
 
-  condData_grouped <-condData_all %>%
-    group_by(group,practice, other_type, prac_score,
-             other_prac_acc,merged_prac_score,type) %>%
-    summarise(weighted_final_acc=weighted.mean(final_acc, count),
-              final_acc= mean(final_acc,na.rm=TRUE),
-              missing=length(count[count==0])/n(), #length(count),
-              count = sum(count),
-              upper = qbinom(sqrt(.025), count,final_acc,lower.tail=F)/count,
-              lower = qbinom(sqrt(.025), count,final_acc,lower.tail=T)/count)
+condData_acc <-  melt(condData_all,
+                      id.vars = c("subject","group", "practice",
+                                  "other_type","merged_prac_score"),
+                      measure.vars = c("final_acc","pred_final_acc"),
+                      value.name = "final_acc") %>% 
+  mutate(type =  ifelse(grepl("pred",variable,fixed=TRUE), "model","real")) %>%
+  select(-variable)
+
+condData_counts <-  melt(condData_all,
+                         id.vars = c("subject","group", "practice",
+                                  "other_type","merged_prac_score"),
+                         measure.vars = c("count","pred_count"),
+                         value.name = "count") %>% 
+  mutate(type = ifelse(grepl("pred",variable,fixed=TRUE), "model","real")) %>%
+  select(-variable)
+
+condData_all <- left_join(condData_counts,condData_acc)
+
+condData_grouped <- condData_all %>%
+  group_by(group,practice, other_type,merged_prac_score,type) %>%
+  summarise(weighted_final_acc=weighted.mean(final_acc, count),
+            final_acc= mean(final_acc,na.rm=TRUE),
+            missing=length(count[count==0])/n(),
+            count = sum(count),
+            upper = qbinom(sqrt(.025), count,final_acc,lower.tail=F)/count,
+            lower = qbinom(sqrt(.025), count,final_acc,lower.tail=T)/count)
 ```
    
 ```{r jointData}   
-jointData_all <- jointData$subject %>% 
-   mutate(type = "model") %>%
-   group_by(subject) %>%
-   mutate(acc = replace(acc, practice=='C' & other_type=='T' ,
-                             c(preds$CT_not_prac_not_final[subject[1]],
-                               preds$CT_not_prac_final[subject[1]],
-                               preds$CT_prac_not_final[subject[1]],
-                               preds$CT_prac_final[subject[1]])),
-          acc = replace(acc, practice=='T' & is.na(other_type),
-                             c(preds$T_not_prac_not_final[subject[1]],
-                               preds$T_not_prac_final[subject[1]],
-                               preds$T_prac_not_final[subject[1]],
-                               preds$T_prac_final[subject[1]]))) %>%                  
-   rbind(cbind(jointData$subject,type="real"))  %>%
-   filter(final_score %in% 0:1, !is.na(merged_prac_score)) %>% 
-    mutate(prac = factor(merged_prac_score,labels = c("inc","cor")),
-           final = factor(final_score,labels = c("inc","cor")),
-           xaxis = interaction(practice,prac,final))
-  
+jointData_all <- filter(jointData$subject, 
+                       other_type!='C', !is.na(merged_prac_score)) %>%
+  mutate(other_type = factor(other_type,exclude=NULL),
+         practice = factor(practice)) %>%
+  left_join(JDpreds) %>%
+  melt(id.vars= c("subject", "group", "practice", "other_type",
+                  "final_score", "merged_prac_score"),
+       measure.vars = c("acc","pred_acc"),
+       value.name  = 'acc') %>% 
+  mutate(type =  ifelse(grepl("pred",variable,fixed=TRUE), "model","real"),
+         prac = factor(merged_prac_score,labels = c("inc","cor")),
+         final = factor(final_score,labels = c("inc","cor")),
+         xaxis = interaction(practice,prac,final)) %>% 
+  select(-variable)
+
   jointData_grouped <- jointData_all%>%
     group_by(group, practice, other_type, prac, final,xaxis,type) %>%
     summarise(acc = mean(acc))
@@ -325,19 +321,20 @@ for (i in unique(IVdata_all$subject)) {
                  digits=3, caption = paste("Best Parameters")),
           type = "html", include.rownames=FALSE, caption.placement="top")  
   IVplot <- ggplot(data= filter(IVdata_all, subject==i, is.finite(pc)),
-                   aes(x=timepoint, y=pc, shape=type,
-                       color = strSort(interaction(practice,factor(other_type,exclude=NULL))),
-                       group = strSort(interaction(type, practice,factor(other_type,exclude=NULL))))) +
-        geom_point(size=3) +    
-        geom_line(size=.75) + 
-        scale_x_discrete("Test",expand=c(0,.25),labels=c("Practice","Final")) + 
-        scale_color_discrete("Condition",labels = c("2 Cues\n1=Tested & 2=Unpracticed",
-                                                    "1 Cue, No Practice",
-                                                    "1 Cue, Restudied",
-                                                    "1 Cue, Tested")) +
-        scale_shape_discrete("Type", labels=c("real" = "Obs. Data",
-                                              "model" = "PCR Model")) +
-        scale_y_continuous("Final Test Accuracy",limit=0:1) +
+                   aes(x=timepoint, y=pc, shape=type, linetype=type,
+                       color = strSort(interaction(practice,other_type)),
+                       group = strSort(interaction(type, practice,other_type)))) +
+    geom_point(size=3) +    
+    geom_line(size=.75) + 
+    scale_x_discrete("Test",expand=c(0,.25),labels=c("Practice","Final")) + 
+    scale_color_discrete("Condition",labels = c("2 Cues\n1=Tested & 2=Unpracticed",
+                                                "1 Cue, No Practice",
+                                                "1 Cue, Restudied",
+                                                "1 Cue, Tested")) +
+    scale_shape_discrete("Type", labels=c("real" = "Obs. Data",
+                                          "model" = "PCR Model")) +
+    scale_linetype_discrete(guide=FALSE) + 
+    scale_y_continuous("Final Test Accuracy",limit=0:1) +
         theme(legend.key.height=unit(2,"line")) + 
         ggtitle('Test Accuracy')
   
@@ -385,7 +382,7 @@ for (i in unique(IVdata_all$subject)) {
 
 ## Average Fits 
 ```{r groupPlots,results='asis',fig.height=11}
-IVplot_grouped <- IVplot %+%  filter(IVdata_grouped,is.finite(pc)) + 
+IVplot_grouped <- IVplot %+% filter(IVdata_grouped,is.finite(pc)) + 
     geom_line(aes(group = strSort(interaction(type, group_del_to_imm,
                                               practice, factor(other_type,exclude=NULL)))),
               size=.75)
@@ -438,16 +435,17 @@ print(jointPlot_grouped)
 ```
 
 ```{r simpler_averages,eval=FALSE}
-simplerIVPlot <- ggplot(data = filter(IVdata_grouped, timepoint != 1, is.finite(pc)),
+simplerIVPlot <- ggplot(data = filter(IVdata_grouped,
+                                      timepoint != 1, is.finite(pc)),
                         aes(x = group, y = pc, ymax=.85, ymin=.15,
-                            shape=type,
-                            color = strSort(interaction(practice,factor(other_type,exclude=NULL))),
-                            group = strSort(interaction(type, practice,factor(other_type,exclude=NULL))))) +
+                            shape=type, linetype=type,
+                            color = strSort(interaction(practice,other_type)),
+                            group = strSort(interaction(type,practice,other_type)))) +
     geom_point(size=3.25) + 
     geom_line(size=.75) +
-#     geom_errorbar(aes(ymax = pc + final_sd/sqrt(groupsize),
-#                       ymin = pc - final_sd/sqrt(groupsize)),
-#                   width = .075) + 
+    geom_errorbar(aes(ymax = pc + sd/sqrt(groupsize),
+                      ymin = pc - sd/sqrt(groupsize)),
+                  width = .075) + 
     scale_color_discrete("Condition",
                          breaks = c("C.T","C.NA","NA.S","NA.T"),
                          labels = c(C.T = "Other Cue", C.NA = "Baseline",
