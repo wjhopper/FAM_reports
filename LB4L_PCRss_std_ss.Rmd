@@ -8,7 +8,14 @@ output:
     toc: true
     toc_depth: 2
     css: custom.css
+params:
+  inpar: FALSE
+  model: FAM::LB4L_PCRss
+  routine: testing
+  pars: !r c("ER","LR","TR","F1","space")
+  fixed: !r c(theta=.5,nFeat=100,nSim=1000,nList=15)    
 ---
+
 ```{r setup, cache=FALSE,echo=FALSE, warning=F, include=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = FALSE,fig.width=11,fig.height=7,cache=FALSE, 
                warning=F, message=FALSE, fig.align='center')
@@ -21,7 +28,6 @@ library(grid)
 library(gridExtra)
 library(ggplot2)
 library(xtable)
-model_prefix <- c("LB4L_PCRss", "std")
 ```
 
 ```{r functions}
@@ -34,6 +40,60 @@ cueLabeller <- function(variable,value) {
     return(groupNames[value])
   }
 }
+
+errFcn <- function(free, fixed, IVdata, jointData, fcn = LB4L_PCRss) {
+  
+  if (!paramBounds(c(free,fixed)) | anyNA(c(free,fixed))) {
+    return(1000000)
+  }
+  
+  preds <- fcn(free=free, fixed=fixed) %>% 
+  joint <- left_join(obs,preds$JD, by = c("practice","other_type"))
+  IV <- left_join(obs,preds$IV, by = c("practice","other_type","prac_score","final_score"))
+  err <- binomialLL(obs=IV$acc,pred=IV$pred_acc ,N=fixed['nList']) +
+         multinomialLL(obs=joint$acc,pred=joint$pred_acc, N = fixed['nList'])
+
+  return(err)
+}
+
+paramBounds <- function(p) {
+
+  probability_params <- c("ER","LR","TR","FR","space")
+  prob_check <- any(p[names(p) %in% probability_params] <= 0, na.rm = TRUE) ||
+                any(p[names(p) %in% probability_params] >= 1, na.rm = TRUE)
+  if (any(prob_check)) {
+    return(FALSE)
+  } else {
+    return(TRUE)
+  }
+}
+
+minimization_routine <- function(model, erf = errFcn) {
+
+  fit <- optimx(par = model$free[[j]],
+                fn = erf,
+                method="Nelder-Mead",
+                itnmax=1000,
+                control = list(maxit=1000,kkt=FALSE),
+                fcn = model$obj, # passed to erf
+                fixed = model$fixed, # passed to erf
+                IVdata = model$IVdata[model$IVdata$subject == j,], # for erf
+                jointData = model$jointData[model$jointData$subject == j,]) # for erf
+  fit$subject = j
+  return(fit)  
+}
+
+testing_routine <- function(model, erf = errFcn) {
+  err <- erf(free = model$free[[j]], fixed = model$fixed, 
+             IVdata = model$IVdata[model$IVdata$subject == j,],
+             jointData = model$jointData[model$jointData$subject == j,])
+  fit <- structure(data.frame(t(c(model$free[[j]], value = err,subject=j))),
+                   details = NULL, maximize = NULL,
+                   npar = length(model$free[[j]]), follow.on=NULL,
+                   class = c("optimx", "data.frame"))
+  return(fit)
+}
+
 ```
 
 ```{r fetchData}
@@ -52,24 +112,76 @@ jointData <- LB4L_joint(LB4L_allSs)
 condData <- LB4L_conditional(LB4L_allSs)
 ```
 
-```{r load_or_fit}
-resultsFile <- paste(paste0(model_prefix, collapse = "_"),
-                  'results',sep='_')
-if (!file.exists(file.path("data",paste(resultsFile,'.rds',sep='')))) {
-  model <- list(par = c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
-                fn = LB4L_PCRss, method="Nelder-Mead", itnmax = 1000,
-                fixed= c(theta=.5,nFeat=100,nSim=1000,nList=15),
-                IVdata = IVdata$subject,
-                jointData = jointData$subject,
-                fitting = TRUE,
-                objective_fcn = model_prefix[1],
-                name = model_prefix[2])
-  results <- fitLB4L(model,inpar=TRUE)
-  saveRDS(results,
-          file = file.path("data",paste(resultsFile,'.rds',sep='')))  
-} else {
-  results <- readRDS(file.path("data",paste(resultsFile,'.rds',sep='')))
+```{r set_model}
+if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
+  stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
 }
+
+free <- replicate(length(unique(IVdata$subject)),
+                  c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
+                  simplify = FALSE)
+
+mname <- strsplit(as.character(params$model),"::")[[1]]
+fname <- paste(mname[length(mname)],
+               paste0(params$pars,collapse="_"),
+               sep="_")
+fpath <- file.path("data",paste(fname,'rds',sep='.'))
+model <- list(free = free,
+              fixed =  params$fixed,
+              obj = eval(parse(text=params$model)),
+              IVdata = IVdata$subject,
+              jointData = jointData$subject)
+
+if (params$routine =="minimize") {
+  routine <- minimization_routine
+} else {
+  routine <- testing_routine
+}
+```
+
+
+```{r load_or_fit}
+if (!file.exists(fpath))  {
+  
+  if (params$inpar) {
+    cluster <- tryDoParallelCluster(detectCores()-1)
+  }
+
+  if (params$inpar && cluster$success) {
+    logfile <- tempfile("parlog", fileext = ".txt")
+    message(paste("Log at", logfile))
+    cat(paste('[',Sys.time(),']',"INIT parlog"),
+        file=logfile, sep='\n')
+    clusterExport(cluster$handle,c("accuracyErrorFcn", "RT_ErrorFcn","routine"))
+    results <- foreach(j =unique(model$data$subject), .verbose=T,
+                             .packages=c("optimx","PCR","whoppeR",
+                                         "dplyr","FAM","reshape2","tidyr"))  %dopar% {
+      sink(logfile, append=TRUE)
+      cat(paste("Fitting subject", j,"\n"))
+      results <- try(routine(model))
+      sink()
+      results
+      }
+    
+    stopCluster(cluster$handle)
+    cat(paste('[',Sys.time(),']',"Finished Fitting"),
+        file=logfile,sep='\n')
+  } else {
+    
+    results <- vector(mode='list', length =length(unique(model$data$subject)))
+    for (j in unique(model$data$subject)) {
+      message(paste("Fitting subject", j))
+      results[[j]] <-  try(routine(model))
+    }
+  }
+  
+  saveRDS(results, file = fpath)  
+} else {
+  
+  results <- readRDS(fpath)
+}
+
+
 preds <- do.call(rbind, lapply(lapply(results$results,`[[`, 'preds'),data.frame))
 preds$subject<- unique(jointData$subject$subject)
 fits <-  do.call(rbind, lapply(results$results,`[[`, 'fit'))
