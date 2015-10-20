@@ -118,7 +118,7 @@ if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
   stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
 }
 
-free <- replicate(length(unique(IVdata$subject)),
+free <- replicate(length(unique(IVdata$subject$subject)),
                   c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
                   simplify = FALSE)
 
@@ -216,12 +216,12 @@ JDpreds <-bind_rows(lapply(preds,`[[`,'JD'),.id="subject") %>%
          pred_acc = acc)
 ```
 
-## Model Specs
+## Fixed Specs
 ```{r modelInfo,results='asis'}
-print(xtable(t(as.matrix(results$par)), digits=3,
-             caption = paste("Starting Free Parameters")),
-      type = "html", include.rownames=FALSE, caption.placement="top")
-print(xtable(t(as.matrix(results$fixed)), digits=3,
+# print(xtable(t(as.matrix(results$par)), digits=3,
+#              caption = paste("Starting Free Parameters")),
+#       type = "html", include.rownames=FALSE, caption.placement="top")
+print(xtable(t(as.matrix(model$fixed)), digits=3,
              caption = paste("Fixed Parameters")),
       type = "html", include.rownames=FALSE, caption.placement="top")
 ```
@@ -311,15 +311,10 @@ jointData_all <- filter(jointData$subject,
 
 ## Subject Fits
 ```{r subjectPlots, results='asis'}
-
+k=1
 for (i in unique(IVdata_all$subject)) {
   
   cat('<h4 class="subid"> Subject',i,'Results </h4>')
-  print(xtable(data.frame(Subject = i,
-                          Group =IVdata_all$group[IVdata$subject==i][1],
-                          select(fits[as.numeric(i),],-subject)),
-                 digits=3, caption = paste("Best Parameters")),
-          type = "html", include.rownames=FALSE, caption.placement="top")  
   IVplot <- ggplot(data= filter(IVdata_all, subject==i, is.finite(pc)),
                    aes(x=timepoint, y=pc, shape=type, linetype=type,
                        color = strSort(interaction(practice,other_type)),
@@ -376,6 +371,12 @@ for (i in unique(IVdata_all$subject)) {
   
   grid.arrange(IVplot, condPlot ,ncol=2,nrow=1)
   print(jointPlot)
+  print(xtable(t(data.frame(free[k])), digits=3, caption = paste("Starting Parameters")),
+          type = "html", include.rownames=FALSE, caption.placement="top")    
+  print(xtable(results[[k]], digits=3, caption = paste("Best Parameters")),
+          type = "html", include.rownames=FALSE, caption.placement="top")
+  k=k+1
+  print(k)
 
 }
 ```
