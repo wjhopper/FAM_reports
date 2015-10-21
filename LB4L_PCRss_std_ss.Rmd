@@ -114,13 +114,13 @@ condData <- LB4L_conditional(LB4L_allSs)
 ```
 
 ```{r set_model}
-if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
-  stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
-}
-
 free <- replicate(length(unique(IVdata$subject$subject)),
                   c(ER=.52,LR=.2,TR =.03, F1=.05,space=.03),
                   simplify = FALSE)
+
+if (!all(unlist(lapply(lapply(free,names), setequal, params$pars)))) {
+  stop("Model specs in header don't match free parameters. Edit header or list of free parameters")
+}
 
 mname <- strsplit(as.character(params$model),"::")[[1]]
 fname <- paste(mname[length(mname)],
@@ -322,10 +322,11 @@ for (i in unique(IVdata_all$subject)) {
     geom_point(size=3) +    
     geom_line(size=.75) + 
     scale_x_discrete("Test",expand=c(0,.25),labels=c("Practice","Final")) + 
-    scale_color_discrete("Condition",labels = c("2 Cues\n1=Tested & 2=Unpracticed",
-                                                "1 Cue, No Practice",
-                                                "1 Cue, Restudied",
-                                                "1 Cue, Tested")) +
+    scale_color_discrete("Practice Condition",
+                         labels = c("2 Cues\n1=Tested & 2=Unpracticed",
+                                    "1 Cue, No Practice",
+                                    "1 Cue, Restudied",
+                                    "1 Cue, Tested")) +
     scale_shape_discrete("Type", labels=c("real" = "Obs. Data",
                                           "model" = "PCR Model")) +
     scale_linetype_discrete(guide=FALSE) + 
@@ -363,7 +364,7 @@ for (i in unique(IVdata_all$subject)) {
                                 "inc.cor"  = "- / +",
                                 "inc.inc" = "- / -."),
                      name = "Practice / Final Accuracy") +
-    scale_color_discrete("Type", labels=c("real" = "Obs. Data",
+    scale_color_discrete("", labels=c("real" = "Obs. Data",
                                           "model" = "PCR Model")) +
     scale_y_continuous("Proportion",limit=0:1) +
     theme(axis.text.x = element_text(size=rel(1.5))) +
@@ -376,7 +377,6 @@ for (i in unique(IVdata_all$subject)) {
   print(xtable(results[[k]], digits=3, caption = paste("Best Parameters")),
           type = "html", include.rownames=FALSE, caption.placement="top")
   k=k+1
-  print(k)
 
 }
 ```
@@ -421,7 +421,7 @@ condPlot_grouped <- ggplot(filter(condData_grouped, type=="real"),
 avg_res <- IVdata_all %>% group_by(subject) %>% 
   slice(1) %>% 
   ungroup() %>% select(group) %>%
-  cbind(fits) %>%
+  cbind(do.call(rbind,results)) %>%
   group_by(group) %>% 
   summarise_each(funs(mean))
 
@@ -442,12 +442,13 @@ simplerIVPlot <- ggplot(data = filter(IVdata_grouped,
                             shape=type, linetype=type,
                             color = strSort(interaction(practice,other_type)),
                             group = strSort(interaction(type,practice,other_type)))) +
-    geom_point(size=3.25) + 
-    geom_line(size=.75) +
+    geom_point(size=5) + 
+    geom_line(size=1) +
     geom_errorbar(aes(ymax = pc + sd/sqrt(groupsize),
                       ymin = pc - sd/sqrt(groupsize)),
-                  width = .075) + 
-    scale_color_discrete("Condition",
+                  width = .075,
+                  linetype=1) + 
+    scale_color_discrete("Practice Condition",
                          breaks = c("C.T","C.NA","NA.S","NA.T"),
                          labels = c(C.T = "Other Cue", C.NA = "Baseline",
                                     NA.S  = "Restudy", NA.T = "Same Cue")) + 
@@ -456,12 +457,13 @@ simplerIVPlot <- ggplot(data = filter(IVdata_grouped,
     ylab("Final Test Accuracy") + 
     theme(legend.key.height=unit(2,"line")) + 
     ggtitle('Cued Recall Accuracy')   + 
-    theme_larger()
+    theme_larger(3.25)
   
 simplerCondPlot <-condPlot_grouped + 
-  scale_x_discrete("Final Test Cue", limits=c(NA,'T'),
+  scale_x_discrete("Cue Used During Practice", limits=c(NA,'T'),
                    labels=c("Same Cue","Other Cue")) +
-  theme_larger()
-simplerjointPlot <- jointPlot_grouped + theme_larger()
+  theme_larger(3.25)
+simplerjointPlot <- jointPlot_grouped + 
+  theme_larger(3.25)
   
 ```  

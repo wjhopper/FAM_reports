@@ -308,8 +308,8 @@ for (i in unique(preds$subject)) {
     geom_line(data = filter(RTdata, subject == i, type == 'model'),
               linetype=2) +
     facet_grid(. ~ class,labeller = classLabeller) +
-    scale_y_continuous("Median RT") +
-    scale_x_discrete("Output Item") +
+    scale_y_continuous("Median Inter-Retreival Time of Item x") +
+    scale_x_discrete("Output Postion (x)") +
     scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
     ggtitle("Data vs. PCR: Reaction Time")
   
@@ -323,10 +323,10 @@ for (i in unique(preds$subject)) {
     geom_line() +    
     facet_grid(. ~ class,labeller = classLabeller) +
     scale_color_discrete("Failure Mode", labels=c("Timed Out","Unrecoverable")) +
-    scale_y_continuous("Proportion of Occurance") +  
-    scale_x_discrete("Output Position") + 
+    scale_y_continuous("Probability of Recalling at Least x Items") +  
+    scale_x_discrete("Output Position (x)") + 
     scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
-    ggtitle("Data vs. PCR: Output Accuracy")
+    ggtitle("Data vs. PCR: Accuracy")
   
   densityPlot <- ggplot(data =dist[dist$subject==i,],aes(x=RT,y=y)) + 
     geom_line(size=.75) +
@@ -383,9 +383,9 @@ aggAccPlot <- ggplot(data =aggAccData,
                 width=.3) +
   facet_grid(. ~ class,labeller = classLabeller) +
   scale_y_continuous("Proportion of Occurance") +  
-  scale_x_discrete("Output Position") + 
+  scale_x_discrete("Output Position (x)") + 
   scale_linetype_discrete(name="",breaks = c(PCR='model',Obs. = 'real')) + 
-  ggtitle("Data vs. PCR: Output Accuracy")
+  ggtitle("Data vs. PCR: Accuracy")
 
 aggRTPlot <- ggplot(data = aggRTdata,
                     aes(x=factor(order), y=RT, linetype=type, color = class)) +
@@ -395,9 +395,9 @@ aggRTPlot <- ggplot(data = aggRTdata,
                     group=interaction(class,type)),
                 linetype=1,
                 width=.3) +
-  facet_grid(. ~ class,labeller = classLabeller) +
-  scale_y_continuous("Median RT") +
-  scale_x_discrete("Output Item") +
+  facet_grid(class ~ .,labeller = classLabeller) +
+  scale_y_continuous("Median Inter-Retreival Time of Item x") +
+  scale_x_discrete("Output Postion (x)") +
   scale_color_manual(name="Condition", guide=FALSE,
                      labels=c("Baseline","Restudy","Test Practice"),
                      values = c('black', 'red', '#00b300')) +   
@@ -427,10 +427,11 @@ aggAccPlot_byType <- ggplot(data =aggAccData,
                 linetype=1,
                 width=.3) +
   facet_grid(. ~ type, labeller = typeLabeller) +
-  scale_y_continuous("Proportion of Occurance") +  
-  scale_x_discrete("Output Position") + 
+  scale_y_continuous("Probability of Recalling at Least x Items") +  
+  scale_x_discrete("Output Position (x)") + 
   scale_color_manual(name="Condition",
                      labels=c("Baseline","Restudy","Test Practice"),
                      values = c('black', 'red', '#00b300')) +  
-  ggtitle("Data vs. PCR: Output Accuracy")
+  ggtitle("Data vs. PCR: Output Accuracy") + 
+  theme(axis.text.x = element_text(size = rel(1.75)))
 ```
